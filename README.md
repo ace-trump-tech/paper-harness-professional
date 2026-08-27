@@ -6,7 +6,7 @@
 
 <p align="center"><img src="demo/stem_pipeline.svg" alt="CV research harness workflow" width="900"></p>
 
-<p align="center"><a href="docs/cv-exploration-zh.md">CV 工作流</a> · <a href="demo/self-learn/README.md">电网具身智能 Demo</a> · <a href="docs/harness-architecture-zh.md">Harness 设计</a> · <a href="examples/cv_exploration_project.json">配置示例</a></p>
+<p align="center"><a href="docs/cv-exploration-zh.md">CV 工作流</a> · <a href="docs/power-grid-literature-only-zh.md">非 CV 电网调研工作流</a> · <a href="demo/self-learn/README.md">电网具身智能 Demo</a> · <a href="docs/harness-architecture-zh.md">Harness 设计</a> · <a href="examples/cv_exploration_project.json">配置示例</a></p>
 
 ## 目标
 
@@ -67,6 +67,10 @@ python3 scripts/extract_pdf_text.py
 ```
 
 原始 PDF、提炼文本和知识卡片均保留在 Demo 内；完整研究说明从 [Demo README](demo/self-learn/README.md) 开始。
+
+## 非 CV 任务怎么处理
+
+遇到“先做文献调研，暂不写代码/仿真”的任务，使用 `power_grid` 领域和 `power_grid_literature_only` 模式。该模式会调用范围、来源、分类和证据审查 Agent，自动跳过 CV 组合、GPU、训练和仿真。示例见 [电网文献调研模式](docs/power-grid-literature-only-zh.md)。
 
 ## 与通用版的关系
 
