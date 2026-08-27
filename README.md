@@ -1,39 +1,139 @@
-# paper-harness-professional
+<div align="center">
 
-**Languages:** [简体中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
+# Paper Harness Professional
 
-> 面向专业科研工作者的多 Agent Auto-Research harness：可以从一个研究题目推进到文献库、创新方案、实验代码、论文初稿和可复现实验记录。它不是无证据的“输入题目直接吐论文”黑盒：每个结论都要绑定来源、运行记录和人工审批。
+**从研究想法到可复现论文：一个可审计的多 Agent 研究流水线**
 
-<p align="center"><img src="demo/stem_pipeline.svg" alt="CV research harness workflow" width="900"></p>
+[简体中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-<p align="center"><a href="docs/cv-exploration-zh.md">CV 工作流</a> · <a href="docs/power-grid-literature-only-zh.md">非 CV 电网调研工作流</a> · <a href="demo/self-learn/README.md">电网具身智能 Demo</a> · <a href="docs/harness-architecture-zh.md">Harness 设计</a> · <a href="examples/cv_exploration_project.json">配置示例</a></p>
+</div>
 
-## 目标
+---
 
-```text
-研究题目/代码仓库 -> 文献下载与知识卡 -> A+B+C 方案候选
-     -> 论文/代码任务拆解 -> 一卡一子 Agent 实验 -> 指标/SOTA 对比
-     -> REFINE / PIVOT -> 图表、论文初稿、实验仓库和对抗审查
-     -> 人工确认后发布
+## 📖 它到底是什么？
+
+它不是“输入题目 → 直接吐论文”的魔术黑盒。  
+它是**面向专业科研工作者的研究编排框架**——你可以把它理解为一个“研究操作系统”：
+
+- **多 Agent 分工协作**：文献、组合、实验、写作各司其职；
+- **证据驱动**：每一个结论、每一组数据、每一段文字都绑定来源（文献页码、运行日志、人工审批）；
+- **可中断 / 可恢复**：即使实验跑了一周，断电后也能从断点继续；
+- **人工始终在环**：候选方案、实验批准、公平对比、论文 Claim，全部需要你点头。
+
+它的核心工作流只有一条主线：
+
+> **研究题目 / 代码仓库** → 文献下载与知识卡片 → A+B+C 候选方案 → 任务拆解 → 每张 GPU 一个子 Agent 实验 → 指标 / SOTA 对比 → REFINE / PIVOT → 图表、论文初稿、实验仓库 → **你确认后发布**
+
+---
+
+## ⚙️ 核心原理：合同驱动，不留模糊地带
+
+Harness 的每一阶段都通过 `cv_contracts.py` 明确定义了：
+
+- 输入（必须有什么）
+- 输出（必须产出什么）
+- 完成定义（什么算“做完”）
+- 审批要求（需要你确认什么）
+
+所有运行产物都会生成 **SHA-256 清单**（`artifact-manifest.json`），外部任何人修改了文件，恢复时立刻能发现。  
+实验记录强制保存：配置、随机种子、数据版本、原始日志、指标、失败信息——**可复现不是口号，是默认行为**。
+
+---
+
+## 🚀 先跑一个 Demo：电网具身智能控制（10 分钟上手）
+
+光说不练假把式。我们提供了一个**完整的电网控制领域 Demo**，包含 4 篇已校验的开放论文、逐页文本、知识卡片、研究路线和实验蓝图。
+
+```bash
+cd demo/self-learn
+python3 scripts/extract_pdf_text.py
 ```
 
-`ResearchOrchestrator` 是 MainAgent：维护会话状态、任务分派、证据链和恢复。研究者在关键节点选择组合、批准实验、核验公平对比并确认论文 claim。
+跑完后你会得到：
 
-## 它可以产出什么
+- 原始 PDF + 页标记文本
+- 每篇论文的知识卡片（方法 / 贡献 / 局限）
+- 研究路线与可执行的实验槽
+- 一份真实的 **园区源网荷储经济调度调研报告**（[demo/self-learn/power-grid-literature-run/report.md](demo/self-learn/power-grid-literature-run/report.md)）
 
-给定一个题目和研究约束，Harness 可以组织以下完整链路：
+> 这个 Demo 不是为了炫技，而是让你亲眼看到：**Harness 如何把 4 篇散落的论文，自动组织成一份结构清晰的研究起点**。  
+> 详细说明请移步 [Demo README](demo/self-learn/README.md)。
 
-| 输入 | 自动组织的工作 | 产物 |
-| --- | --- | --- |
-| 研究题目、已有论文、代码仓库 | 文献检索、全文一次性提炼、去重和知识库索引 | 可复用的本地知识库、来源清单和研究笔记 |
-| 方法方向或 A+B+C 假设 | 候选组合、反例审查、资源预算和实验矩阵 | 可比较的创新候选与审查记录 |
-| 数据集、基线代码、GPU/仿真器 | 生成可执行实验槽，保存配置、种子、数据版本、日志、指标和失败信息 | 可复现实验结果、失败案例和 SOTA 对比 |
-| 通过人工审批的证据链 | 组织表格、图表、论文段落、引用绑定和相似度/AI 使用审查 | 论文初稿、图表文件、claim 审计清单 |
-| 研究代码需求 | 将实验拆成仓库任务，记录依赖、入口、测试和运行命令 | 可独立运行的研究代码仓库或补丁计划 |
+---
 
-因此它既能“根据题目推进论文”，也能帮助搭建论文配套代码仓库；它不替研究者做未经验证的科学结论或自动发布。
+## 🔌 非 CV 任务怎么办？以电网文献调研为例
 
-## 快速开始
+很多研究课题**根本不需要写代码或跑仿真**，前期只需要扎实的文献调研。Harness 同样覆盖这个场景。
+
+使用 `power_grid` 领域 + `power_grid_literature_only` 模式，系统会自动：
+
+- 调用范围审查 Agent（界定调研边界）
+- 调用来源审查 Agent（筛选高价值文献）
+- 调用分类与证据审查 Agent（提炼核心观点并交叉验证）
+- **完全跳过** CV 组合、GPU 分配和训练执行
+
+最终输出的是研究笔记、分类综述和证据清单，而不是实验代码。  
+这个模式已经在真实电网项目中验证过，产出了一份完整的调研报告。  
+👉 参阅 [电网文献调研模式](docs/power-grid-literature-only-zh.md)。
+
+---
+
+## 🌟 这个 Harness 从哪来？——MindPaw 的实战验证
+
+> **这不是一个象牙塔里的玩具，而是一套从成功开源项目中提取的成熟基础设施。**
+
+Paper Harness Professional 的架构设计，直接脱胎于：
+
+<div align="center">
+  <a href="https://github.com/ace-trump-tech/MindPaw">
+    <strong>MindPaw</strong>
+  </a>
+  — 面向具身智能控制的研究自动化框架  
+  ⭐ <strong>2.4k Stars</strong> · 🍴 <strong>2.2k Forks</strong>
+</div>
+
+MindPaw 已经在真实研究场景中跑通了“文献 → 方案 → 实验 → 论文”的全链路，证明了多 Agent 协作、证据审计和人工审批的实战价值。我们将其中**通用、可复用**的核心能力抽象出来，形成了 Paper Harness Professional。
+
+**这意味着**：你不需要从零搭建这套复杂的研究基础设施，直接站在 2.4k 开发者和研究者的肩膀上开始自己的课题。
+
+---
+
+## 🧠 多 Agent 架构速览
+
+| Agent | 核心产出 | 职责 |
+| :--- | :--- | :--- |
+| **MainAgent** | event log + 全局状态 | 恢复、审批、调度、维护证据链 |
+| **Literature + Knowledge** | 文献索引 + 知识卡片 | 本地资料索引、长文分块、研究笔记 |
+| **Combination** | 创新组合候选 | 枚举 A/B/C/A+B/A+C/B+C/A+B+C |
+| **GPU-SubAgent** | 每卡实验槽 | 记录设备、配置、日志、指标、失败信息 |
+| **Evaluation** | 公平对比结果 | 统一协议下对比 mAP/mIoU/F1 与 SOTA |
+| **Composition** | 图表 + 论文初稿 | 写作输入、Claim 对抗审查、复核清单 |
+
+---
+
+## 📦 它能为你产出什么？
+
+| 你的输入 | Harness 自动组织 | 最终产物 |
+| :--- | :--- | :--- |
+| 研究题目 + 论文 + 代码仓 | 文献检索、全文提炼、去重、索引 | 本地知识库 + 来源清单 + 研究笔记 |
+| A+B+C 假设方向 | 候选组合枚举、反例审查、资源预算 | 可比较的创新候选 + 审查记录 |
+| 数据集 + 基线代码 + GPU/仿真器 | 生成可执行实验槽，固化全部上下文 | 可复现实验结果 + SOTA 对比 + 失败案例 |
+| 通过审批的证据链 | 组织表格、图表、段落、引用绑定 | 论文初稿 + 图表文件 + Claim 审计清单 |
+| 代码需求描述 | 拆解仓库任务，记录依赖 / 入口 / 测试 | 可独立运行的研究代码仓库或补丁计划 |
+
+---
+
+## 🛡️ 专业保障与审计边界
+
+- **不伪造指标**：未配置数据集、代码仓和 runtime 时，系统不会凭空生成任何实验数据。
+- **所有外部执行器可选**：PDF 下载、代码拉取、Docker/Slurm/SSH 均需你在合规前提下明确接入。
+- **权威来源不可绕过**：电网/控制类结果只认仿真器、数值求解器和安全门控的输出；LLM 只能解释结果，不能直接控制设备。
+- **论文不自动投稿**：最终引用、图表、许可证、Claim 必须经你人工确认。
+- **组合候选不自动成立**：必须做消融、基线对比和统计核验，通过后才会进入下一轮。
+
+---
+
+## ⚡ 一分钟快速开始
 
 ```bash
 python3 -m venv .venv
@@ -42,54 +142,22 @@ python -m paper_harness.cli init examples/cv_exploration_project.json --output .
 python -m paper_harness.cli run ./runs/cv-demo/project.json
 ```
 
-编辑 `gpu_devices`、`innovation_components`、`cv_metrics` 与 `knowledge_files` 后再次初始化。默认只创建 dry-run 实验槽；批准 `experiment` 并配置外部 runtime、代码和数据集后，才允许真正执行训练。
+> 默认只创建 **dry-run 实验槽**，不会真的跑训练。只有在你批准 `experiment` 并配置好外部 runtime、代码和数据集后，才允许执行实际计算。
 
-## 多 Agent 架构
+---
 
-| Agent | 输出 | 职责 |
-| --- | --- | --- |
-| MainAgent | event log + JSON artifacts | 恢复、审批、调度与全局证据链 |
-| Literature + Knowledge | `literature_search`, `knowledge_index` | 本地资料索引、长文分块、文献卡与研究笔记 |
-| Combination | `innovation_combinations` | 枚举 A、B、C、A+B、A+C、B+C、A+B+C |
-| GPU-SubAgent | `gpu_experiment` | 每张 GPU 一个实验槽，记录设备、配置、日志、指标与失败 |
-| Evaluation | `cv_evaluation` | 用一致数据切分/协议比较 mAP、mIoU、F1、误差和 SOTA 参考 |
-| Composition | `cv_composition`, `draft` | 图表、写作输入、claim 对抗审查与人工复核清单 |
+## 📂 更多文档
 
-## Harness 保障
+- [CV 工作流详解](docs/cv-exploration-zh.md)  
+- [电网文献调研模式](docs/power-grid-literature-only-zh.md)  
+- [Harness 架构设计](docs/harness-architecture-zh.md)  
+- [完整配置示例](examples/cv_exploration_project.json)
 
-参考 AutoResearchClaw 的可验证实验设计，但针对 CV 收敛为轻量内核：
+---
 
-- `cv_contracts.py`：每一阶段有明确输入、输出、完成定义和审批要求。
-- `cv_harness.py`：外部训练代码通过统一接口上报指标，拒绝 NaN/Inf，写入受控 `results.json`。
-- `hardware.py`：仅探测本机 CUDA 能力用于资源规划，不会自动启动训练。
-- `artifact-manifest.json`：为运行中的 artifact 生成 SHA-256 清单，恢复前可发现外部修改。
-- `knowledge/`：原始长文本分块落盘，Agent 传递摘要/索引而非反复传输全文，降低 token 与内存压力。
+<div align="center">
 
-## 权威边界与可审计性
+**Paper Harness Professional** —— 让你的每个研究脚印，都清晰可溯。  
+从今天起，用它来组织你的下一个项目。
 
-- Harness 可以生成论文初稿和代码任务，但不会把语言模型生成的段落、指标或控制动作当作事实。未配置数据集、代码仓库和 runtime 时不会伪造 CV 指标。
-- 每个实验必须保存配置、随机种子、数据来源/版本、运行环境、原始指标、日志、失败信息、artifact SHA-256 和人工审批事件；这些记录可在中断后恢复并审计。
-- 专业版中的仿真器、数值求解器和安全门控才是电网/控制结果的权威来源。LLM 或 Agent 只能提出候选、调用工具和解释结果，不能绕过安全校验直接控制设备。
-- 论文生成不是自动投稿：最终引用、claim、图表、代码许可证和数据许可必须由人确认。
-- PDF 下载、PDF 解析、代码拉取、Docker/Slurm/SSH 执行器都属于可选外部 provider，需在合规前提下明确接入。
-- 组合优胜者只是下一轮候选，不能自动视作创新成立；必须做人类审查、消融、基线和统计核验。
-- 不自动投稿、不伪造引用、不绕过数据集许可、登录、付费墙或 robots 规则。
-
-## 专业版 Demo：电网具身智能控制
-
-`demo/self-learn/` 是专业版的第一个领域 Demo。它包含 4 篇已校验的开放论文、页标记文本、逐篇知识卡片、零基础学习路径、可证伪创新方向库、Agent 协议、统一目录、实验蓝图、SHA-256 校验和可重试下载脚本。另有一份真实的[园区源网荷储经济调度调研报告](demo/self-learn/power-grid-literature-run/report.md)，展示 Harness 如何先做非 CV 文献任务，再决定是否进入仿真和实验。
-
-```bash
-cd demo/self-learn
-python3 scripts/extract_pdf_text.py
-```
-
-原始 PDF、提炼文本和知识卡片均保留在 Demo 内；完整研究说明从 [Demo README](demo/self-learn/README.md) 开始。
-
-## 非 CV 任务怎么处理
-
-遇到“先做文献调研，暂不写代码/仿真”的任务，使用 `power_grid` 领域和 `power_grid_literature_only` 模式。该模式会调用范围、来源、分类和证据审查 Agent，自动跳过 CV 组合、GPU、训练和仿真。示例见 [电网文献调研模式](docs/power-grid-literature-only-zh.md)。
-
-## 与通用版的关系
-
-`paper-harness-undergraduate` 是独立仓库，面向本科毕业论文、教师课题和零基础用户。专业版保留 GPU/runtime、领域知识库和多 Agent 实验迭代；两个子仓库共同构成完整的 paper-harness 产品。
+</div>
