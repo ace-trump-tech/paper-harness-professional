@@ -28,7 +28,7 @@ def main() -> int:
     args = _parser().parse_args()
     if args.command == "init":
         spec = json.loads(Path(args.spec).read_text(encoding="utf-8"))
-        project = Project(title=spec["title"], domain="stem", objective=spec.get("objective", ""), root=args.output, settings=spec.get("settings", {}))
+        project = Project(title=spec["title"], domain=spec.get("domain", "stem"), objective=spec.get("objective", ""), root=args.output, settings=spec.get("settings", {}))
         orchestrator = ResearchOrchestrator(Path(args.output))
         orchestrator.save_project(project)
         print(json.dumps(project.to_dict(), ensure_ascii=False, indent=2))
