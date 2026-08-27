@@ -23,6 +23,12 @@ def validate_artifact_payload(kind: str, payload: Dict[str, Any]) -> None:
         "gpu_experiment": ["device", "records", "parallelism", "human_approval_required"],
         "cv_evaluation": ["metrics", "sota_comparison", "runs_seen", "recommendations", "human_review_required"],
         "cv_composition": ["inputs", "outputs", "claim_policy", "status", "human_review_required"],
+        "power_grid_scope": ["research_question", "scope", "questions", "search_blocks", "exclusions", "deliverable"],
+        "power_grid_source_manifest": ["records", "download_policy", "local_text_policy", "code_policy", "missing_fields"],
+        "power_grid_model_matrix": ["matrix", "comparison_rule"],
+        "power_grid_evidence_review": ["coverage", "source_count", "checks", "blocked_claims", "human_review_required"],
+        "research_boundary": ["mode", "experiments", "simulation", "code_execution", "next_allowed_step", "reason"],
+        "power_grid_literature_synthesis": ["format", "sections", "available_artifacts", "claim_policy", "status", "human_review_required"],
     }.get(kind)
     if required:
         missing = [key for key in required if key not in payload]
