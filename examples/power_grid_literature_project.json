@@ -1,0 +1,21 @@
+{
+  "title": "园区源网荷储经济优化调度文献调研",
+  "domain": "power_grid",
+  "objective": "系统调研园区级源网荷储经济优化调度的定义、建模、目标、约束、方法类别和后续研究方向",
+  "settings": {
+    "research_mode": "power_grid_literature_only",
+    "online": true,
+    "cache": true,
+    "literature_limit": 30,
+    "require_human_approval": true,
+    "approved_stages": [],
+    "knowledge_chunk_chars": 6000,
+    "knowledge_chunk_overlap": 400,
+    "sources": [],
+    "download_papers": true,
+    "download_code": true,
+    "execute_experiments": false,
+    "execute_toy_experiment": false,
+    "gpu_devices": []
+  }
+}
