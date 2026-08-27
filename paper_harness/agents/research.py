@@ -27,7 +27,7 @@ class LiteratureScout(Agent):
                 if settings.get("cache", True) and context.project.root:
                     provider = CachedLiteratureProvider(provider, Path(context.project.root) / "cache")
                 records.extend(provider.search(query, limit=int(settings.get("literature_limit", 5))))
-            except PublicApiError as exc:
+            except (PublicApiError, OSError, ValueError, TypeError, AttributeError) as exc:
                 provider_errors.append(str(exc))
         unique = {}
         for record in records:
