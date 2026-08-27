@@ -17,7 +17,13 @@
     {"id": "cv-combination-planner", "role": "enumerate A+B+C CV innovation combinations"},
     {"id": "gpu-subagent[device]", "role": "prepare one auditable CV experiment slot per configured GPU"},
     {"id": "evaluation-subagent", "role": "compare CV metrics and propose controlled next-round changes"},
-    {"id": "composition-agent", "role": "compose a provenance-aware CV draft and claim review"}
+    {"id": "composition-agent", "role": "compose a provenance-aware CV draft and claim review"},
+    {"id": "power-grid-scope", "role": "parse power-grid literature scope and search blocks"},
+    {"id": "power-grid-source-manager", "role": "track open-access papers, code links, extraction and licenses"},
+    {"id": "power-grid-taxonomy", "role": "build source-grounded modeling, objective, constraint and method matrices"},
+    {"id": "power-grid-evidence-critic", "role": "audit coverage and block unsupported prevalence or superiority claims"},
+    {"id": "power-grid-research-boundary", "role": "enforce literature-only mode with no code, simulation or GPU execution"},
+    ,{"id": "power-grid-synthesis", "role": "prepare a citation-bound power-grid literature review outline"}
   ],
   "policy": {
     "max_rounds": 3,
