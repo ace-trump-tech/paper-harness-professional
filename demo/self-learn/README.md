@@ -25,6 +25,10 @@ An embodied grid controller must connect perception, state estimation or a world
 
 At this snapshot, four papers are verified locally. No upstream code snapshot has passed the full-transfer check yet, so `code/` is intentionally empty; use `metadata/code-sources.md` and `scripts/download_code.sh` to refresh it when the network is stable.
 
+## Literature-only dispatch study
+
+The checked-in [first-round report](power-grid-literature-run/report.md) is the output of the non-CV workflow for “park-level source-grid-load-storage economic dispatch”. It contains a 15-paper DOI-verified core sample, a model/method comparison, and explicit claims that still require full-text coding. This run intentionally performs no simulation or algorithm implementation.
+
 ## Starting Point
 
 Read `knowledge/index/research-map.md`, then choose one track:
