@@ -8,6 +8,7 @@
     {"path": "innovation-bank.md", "kind": "research", "tags": ["innovation", "ablation", "safety"]},
     {"path": "experiment-blueprint.md", "kind": "protocol", "tags": ["benchmark", "reproducibility"]},
     {"path": "agent-protocol.md", "kind": "agent", "tags": ["prompt", "audit"]},
+    {"path": "paper-card-template.md", "kind": "schema", "tags": ["literature", "coding", "provenance"]},
     {"path": "../../power-grid-literature-run/report.md", "kind": "literature-report", "tags": ["economic-dispatch", "microgrid", "methods"]},
     {"path": "../cards/powergym-2022.md", "kind": "card", "tags": ["distribution", "volt-var", "benchmark"]},
     {"path": "../cards/gym-anm-2021.md", "kind": "card", "tags": ["distribution", "active-network-management"]},
