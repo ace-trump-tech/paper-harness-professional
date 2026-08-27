@@ -11,4 +11,5 @@ STEM = DomainPack(
     experiment_modes=["code", "simulation", "benchmark"],
     visual_mode="modular",
     visual_constraints=["label every element", "preserve coordinate/provenance metadata", "supervise composition against scientific claims"],
+    research_modes=["full", "literature_only"],
 )
