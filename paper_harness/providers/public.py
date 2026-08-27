@@ -28,15 +28,17 @@ class OpenAlexProvider(LiteratureProvider):
         url = "https://api.openalex.org/works?search={}&per-page={}".format(quote(query), min(limit, 50))
         data = _get_json(url)
         for item in data.get("results", []):
+            primary_location = item.get("primary_location") or {}
+            source = primary_location.get("source") or {}
             yield SourceRecord(
                 title=item.get("title", ""),
                 url=item.get("doi") or item.get("id", ""),
-                authors=[a.get("author", {}).get("display_name", "") for a in item.get("authorships", [])],
+                authors=[(a.get("author") or {}).get("display_name", "") for a in item.get("authorships", [])],
                 year=item.get("publication_year"),
                 abstract="",
                 source_kind=self.name,
                 external_id=item.get("id", ""),
-                venue=(item.get("primary_location") or {}).get("source", {}).get("display_name", "") if item.get("primary_location") else "",
+                venue=source.get("display_name", ""),
                 cited_by_count=item.get("cited_by_count"),
             )
 
