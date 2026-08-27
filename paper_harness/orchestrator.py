@@ -11,6 +11,7 @@ from .agents.research import AdversarialCritic, EvidenceSynthesizer, ExperimentD
 from .agents.writing import DraftWriter
 from .agents.visual import CompositionSupervisor, VisualComposer, VisualCritic, VisualPlanner
 from .agents.profiles import CompositionAgent, CVCombinationAgent, EvaluationSubAgent, GPUSubAgent, KnowledgeBaseAgent
+from .agents.power_grid import PowerGridBoundaryAgent, PowerGridEvidenceAgent, PowerGridScopeAgent, PowerGridSourceAgent, PowerGridSynthesisAgent, PowerGridTaxonomyAgent
 from .run_manifest import verify_artifact_manifest, write_artifact_manifest
 from .domain_packs import PACKS
 from .events import EventLog
@@ -58,8 +59,12 @@ class ResearchOrchestrator:
         if domain is None:
             raise ValueError(f"unknown domain: {project.domain}; choose one of {sorted(PACKS)}")
         agents: List[Agent] = [KnowledgeBaseAgent(), LiteratureScout(), InnovationGenerator(), AdversarialCritic(), ExperimentDesigner(), EvidenceSynthesizer(), VisualPlanner(), VisualComposer(), DraftWriter(), SimilarityChecker(), AuthorshipEditor(), ClaimAuditor(), VisualCritic(), CompositionSupervisor()]
-        agents.extend([CVCombinationAgent(), EvaluationSubAgent(), CompositionAgent()])
-        agents.extend(GPUSubAgent(device) for device in project.settings.get("gpu_devices", ["cuda:0"]))
+        if project.settings.get("research_mode") == "power_grid_literature_only" or project.domain == "power_grid":
+            agents.extend([PowerGridScopeAgent(), PowerGridSourceAgent(), PowerGridTaxonomyAgent(), PowerGridEvidenceAgent(), PowerGridBoundaryAgent(), PowerGridSynthesisAgent()])
+        else:
+            agents.extend([CVCombinationAgent(), EvaluationSubAgent(), CompositionAgent()])
+        if project.settings.get("research_mode") != "power_grid_literature_only" and project.domain != "power_grid":
+            agents.extend(GPUSubAgent(device) for device in project.settings.get("gpu_devices", ["cuda:0"]))
         stages = (Stage.LITERATURE, Stage.HYPOTHESIS, Stage.ADVERSARIAL_REVIEW, Stage.EXPERIMENT, Stage.EVIDENCE_REVIEW, Stage.DRAFT, Stage.FINAL_REVIEW)
         if project.stage == Stage.ARCHIVED:
             return {"project": project.to_dict(), "artifacts": [item.to_dict() for item in self.artifacts]}
@@ -96,7 +101,10 @@ class ResearchOrchestrator:
                    and event.get("payload", {}).get("agent") == agent for event in self.events.read())
 
     def _stage_completed(self, project: Project, stage: Stage) -> bool:
-        expected = {agent.name for agent in (SimilarityChecker(), AuthorshipEditor(), ClaimAuditor(), VisualCritic(), CompositionSupervisor())}
+        if project.settings.get("research_mode") == "power_grid_literature_only" or project.domain == "power_grid":
+            expected = {agent.name for agent in (SimilarityChecker(), AuthorshipEditor(), ClaimAuditor())}
+        else:
+            expected = {agent.name for agent in (SimilarityChecker(), AuthorshipEditor(), ClaimAuditor(), VisualCritic(), CompositionSupervisor())}
         completed = {event.get("payload", {}).get("agent") for event in self.events.read()
                      if event.get("topic") == "agent.completed" and event.get("trace_id") == project.project_id
                      and event.get("payload", {}).get("stage") == stage.value}
@@ -105,6 +113,8 @@ class ResearchOrchestrator:
     @staticmethod
     def _requires_approval(project: Project, stage: Stage) -> bool:
         if not project.settings.get("require_human_approval", True):
+            return False
+        if project.settings.get("research_mode") == "power_grid_literature_only" and stage == Stage.EXPERIMENT:
             return False
         return stage in {Stage.ADVERSARIAL_REVIEW, Stage.EXPERIMENT, Stage.EVIDENCE_REVIEW, Stage.DRAFT, Stage.FINAL_REVIEW}
 
@@ -115,6 +125,20 @@ class ResearchOrchestrator:
 
     @staticmethod
     def _stage_agent(agent: Agent, stage: Stage, project: Optional[Project] = None) -> bool:
+        literature_only = bool(project and (project.settings.get("research_mode") == "power_grid_literature_only" or project.domain == "power_grid"))
+        if literature_only:
+            mapping = {
+                Stage.LITERATURE: {"knowledge-base", "literature-scout", "power-grid-scope", "power-grid-source-manager"},
+                Stage.HYPOTHESIS: "power-grid-taxonomy",
+                Stage.ADVERSARIAL_REVIEW: "power-grid-evidence-critic",
+                Stage.EXPERIMENT: "power-grid-research-boundary",
+                Stage.EVIDENCE_REVIEW: "evidence-synthesizer",
+                Stage.DRAFT: "power-grid-synthesis",
+            }
+            if stage == Stage.FINAL_REVIEW:
+                return agent.name in {"similarity-checker", "authorship-editor", "claim-auditor"}
+            expected = mapping.get(stage)
+            return agent.name in expected if isinstance(expected, set) else expected == agent.name
         mapping = {
             Stage.LITERATURE: {"knowledge-base", "literature-scout"},
             Stage.HYPOTHESIS: {"innovation-generator", "cv-combination-planner"},
