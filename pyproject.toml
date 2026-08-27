@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "paper-harness-cv"
+name = "paper-harness-professional"
 version = "0.1.0"
-description = "An auditable multi-agent Auto-Research harness for computer vision"
+description = "An auditable multi-agent Auto-Research harness for professional research"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}

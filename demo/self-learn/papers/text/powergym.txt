@@ -1,0 +1,907 @@
+
+
+===== PAGE 1 =====
+
+PowerGym: A Reinforcement Learning Environment for
+Volt-Var Control in Power Distribution Systems
+Ting-Han Fan1,3, Xian Yeow Lee 2,3, and Yubo Wang 3
+1 Princeton University
+2 Iowa State University
+3 Siemens Technology
+tinghanf@princeton.edu, xylee@iastate.edu, yubo.wang@siemens.com
+Abstract
+We introduce PowerGym, an open-source reinforcement learning environment for Volt-Var
+control in power distribution systems. Following OpenAI Gym APIs, PowerGym targets min-
+imizing power loss and voltage violations under physical networked constraints. PowerGym
+provides four distribution systems (13Bus, 34Bus, 123Bus, and 8500Node) based on IEEE
+benchmark systems and design variants for various control diﬃculties. To foster generaliza-
+tion, PowerGym oﬀers a detailed customization guide for users working with their distribution
+systems. As a demonstration, we examine state-of-the-art reinforcement learning algorithms in
+PowerGym and validate the environment by studying controller behaviors. The repository is
+available at https://github.com/siemens/powergym.
+1 Introduction
+Volt-Var control refers to the control of voltage (Volt) and reactive power (Var) in power distribution
+systems to achieve healthy operation of the systems. By optimally dispatching voltage regulators,
+switchable capacitors, and controllable batteries, Volt-Var control helps to ﬂatten voltage proﬁles
+and reduce power losses across the power distribution systems. It is hence rated as the most desired
+function for power distribution systems [Borozan et al., 2001].
+The center of the Volt-Var control is an optimization for voltage proﬁles and power losses governed
+by networked constraints. Represent a power distribution system as a tree graph ( N,ξ ), whereN
+is the set of nodes or buses andξ is the set of edges or lines and transformers. Denote node i asj’s
+parent. The physical networked constraints are given by [Farivar et al., 2013]:
+pj =pij−Rij𝓁ij−
+∑
+(j,k)∈ξ
+pjk
+qj =qij−Xij𝓁ij−
+∑
+(j,k)∈ξ
+qjk
+v2
+j =v2
+i− 2(Rijpij +Xijqij) + (R2
+ij +X 2
+ij)𝓁ij
+𝓁ij = (p2
+ij +q2
+ij)/v2
+i,
+(1)
+where p,q are active and reactive power consumed at nodes or edges, v,𝓁 denote bus voltage mag-
+nitude and squared current magnitude, R,X are resistance and reactance. Capital letters stand for
+given parameters otherwise variables. The constraints in Eq. (1) have quadratic equalities, making
+any optimization upon it nonconvex. Researchers have either tightly relaxed the constraints with
+1
+arXiv:2109.03970v3  [cs.LG]  14 Mar 2022
+
+
+===== PAGE 2 =====
+
+strict nodal injection assumptions [Gan et al., 2014] or used linearization that assumes the dis-
+tribution systems operates at a ﬁxed operating point [Yang et al., 2016]. Both methods require
+tremendous eﬀorts in trimming and conversion of a model that is readily available in commercial
+circuit simulation software to speciﬁc optimization formulation. Together with many integer decision
+variables in controllable devices not shown above, the Volt-Var control problem becomes extremely
+hard to scale to a system with thousands of buses, a typical size for distribution systems.
+With recent breakthroughs in deep reinforcement learning (RL), power system researchers have
+tried using RL for power system operation. One such example is learning to operate a transmission
+systems operation in L2RPN competition [Marot et al., 2021]. Though transmission systems are
+fundamentally diﬀerent from distribution systems in both network topology (looped vs. radial) and
+typical problem types (dynamic vs. quasi-static), RL has shown promising results [Yoon et al., 2020]
+in operating transmission systems. While there exist many papers on RL in distribution systems,
+researchers have used their own environments. One of the many reasons behind it is due to the
+regulatory and conservative nature of the power engineering industry: being safety-critical, the real-
+life distribution system topologies and control settings are proprietary. To encourage power systems
+researchers to make fair comparisons on the developed RL algorithms without having the concern of
+proprietary information leakage, we have developed PowerGym, a Gym-like environment [Brockman
+et al., 2016] for optimizing Volt-Var control using IEEE benchmark test systems [PES, 2010, Dugan
+and Arritt, 2010]. It further serves as a base for power systems engineers to implement RL algorithms
+on their proprietary systems with minor customization.
+PowerGym supports Gym-like usages such as reset, step, random action sampling, and visual-
+ization; hence it is readily applicable to run on most developed RL algorithms. On top of the Gym
+design, PowerGym provides a wide range of environment variations of the IEEE benchmark systems.
+These variations aﬀect the environment’s physical constraints and ultimately the control diﬃculties,
+allowing users to choose an environment either easier to control however more abstracted or harder
+to control yet more realistic. PowerGym is safe for parallel execution up to some ﬁle constraints
+(discuss in environment design section), so the user can run parallel algorithms such as A3C [Mnih
+et al., 2016].
+Our contributions are as follows. First, we design PowerGym to help power system researchers
+benchmark their controls and RL algorithms. To be best of the authors’ knowledge, this is the
+ﬁrst publicly accessible environment with a focus on Volt-Var control in power distribution systems.
+Second, we consider environment usability and extendibility in PowerGym. We provide variations
+of the environments for diﬀerent control diﬃculties and a detailed customization guide. Finally, we
+showcase the applicability of PowerGym on two popular RL algorithms, PPO [Schulman et al., 2017]
+and SAC [Haarnoja et al., 2018] for validation purposes. We also explain how the controllers work
+through a case study.
+2 Related Work
+The application of RL to control and manage various aspects of power systems is a well-studied
+topic in literature [Zhang et al., 2020]. There has been renewed interest in this topic due to al-
+gorithmic advancements, allowing RL to go beyond tabular settings and scale to large state and
+action spaces using neural networks as expressive function approximators. Examples of such work
+include home/building energy control [Sun et al., 2020, Pigott et al., 2021], power systems stability
+control [Ernst et al., 2004], microgrid control [Henri et al., 2020], and load frequency control for re-
+newable energy [Yan and Xu, 2019]. In the context of Volt-Var control, various studies leverage RL
+to optimize various aspects of the problem, such as emphasizing the constraint satisfaction [Wang
+2
+
+
+===== PAGE 3 =====
+
+et al., 2019, 2020] or the sample eﬃciency and scalability [Zhang et al., 2021]. Nevertheless, most of
+these results are based on non-standardized implementations of various systems with the environ-
+ment tuned to the speciﬁcs of the problem. This has led to the diﬃculty of evaluating and comparing
+results and remains a crucial challenge in these areas, as highlighted by Gao and Yu [2021].
+In other domains of deep RL, researchers recognized the importance of having high-quality bench-
+mark environments to facilitate the research into RL application. This has led to the development
+of environments such as OpenAI Gym for training RL agents to play a variety of games and for
+robotic control [Brockman et al., 2016], Safety Gym for safe RL exploration [Ray et al., 2019] and
+ns3-gym for training RL in networks research problems [Gaw lowicz and Zubow, 2018]. More closely
+related benchmarks include the Grid2Op [Donnot, 2020] and Gym-ANM [Henry and Ernst, 2021].
+Grid2Op is the platform used for the Learning To Run Power Network (L2PRN) challenge, control-
+ling unpredictable power generation from renewable energy sources through power systems’ topology
+change [Marot et al., 2020]. Gym-ANM is an RL environment that models Active Network Man-
+agement (ANM) for renewable energy. Nevertheless, a standardized benchmark for Volt-Var control
+environments with the ﬂexibility of instantiating systems of various sizes and diﬃculty is still lacking.
+To this end, we hope that PowerGym serves to ﬁll the gap in the community as a uniﬁed benchmark
+environment for RL research in Volt-Var control.
+3 Reinforcement Learning Preliminaries
+A reinforcement learning (RL) environment is often modeled by the Markov Decision Process (MDP)
+with two common MDPs: inﬁnite-horizon discounted MDP Md =⟨S,A,T,r,γ ⟩ and ﬁnite-horizon
+episodic MDP Me =⟨S,A,{Ti},{ri},H⟩.S,A are the state and action spaces. T /{Ti}, r/{ri} are
+the stationary/non-stationary state transition function and reward function. γ∈ (0, 1), H∈ N are
+the discount factor and the horizon. In this paper, we assume a stationary state transition in Me:
+Ti =T for i∈ [0...H− 1]. The goal of RL is to ﬁnd a policy to maximize the cumulative rewards:
+RMd(π) = E
+[ ∞∑
+i=0
+γir(si,ai,si+1)
+⏐⏐⏐ai∼π(·|si)
+]
+RMe({πi}) = E
+[H−1∑
+i=0
+ri(si,ai,si+1)
+⏐⏐⏐ai∼πi(·|si)
+] (2)
+It is well-known that the optimal policy of Md is stationary while that of Me is non-stationary
+[Agarwal et al., 2019][Chapter 1]; hence in Eq. (2), the policy is denoted as π in Md and as{πi} in
+Me. To reduce the model complexity, most RL experiments are formulated intoMd if the stationarity
+holds. However, Me is inevitable when the reward is non-stationary. Depending on the application
+scenarios, we implement both stationary and non-stationary rewards, which will be discussed in the
+next section.
+4 A Volt-Var Control Environment
+4.1 Power Distribution Systems and Objectives
+Power distribution systems are networks for delivering electric power from the power transmission
+system to end consumers. Due to the distribution loss, voltage drops along the power delivery line,
+possibly causing voltage violations and power losses. Thus, Volt-Var optimization is required. In
+3
+
+
+===== PAGE 4 =====
+
+power distribution systems, the Volt-Var optimization problem is to control devices (e.g., regula-
+tors, capacitors, and batteries. represented as x.) under constraints. x aﬀects voltage, resistance,
+reactance, and power in the physical networked constraints, so Eq. (1) is a constraint of Eq. (3).
+minx fvolt(x) +fctrl(x) +fpower(x)
+s.t. Eq . (1) and device constraints. (3)
+The Volt-Var optimization’s objective is a combination of three losses: fvolt for voltage violation,
+fctrl for control error, and fpower for power loss. The device constraints ensures the devices operates
+within its physical limits. While Eq. (3) only accounts for a single time step, in practice we solve it
+at every time step. Solving a sequence of Volt-Var optimization, Eq. (3), becomes a Volt-Var control
+problem. In short, we call a problem Volt-Var optimization if solving a single Eq. (3) and Volt-Var
+control if solving a sequence of Eq. (3) connected by device operation constraints over time.
+We use a Python version of OpenDSS to solve for the physical networked constraints of Eq. (3).
+OpenDSS is an open-source power ﬂow solver developed by EPRI. It takesp,q from Eq. (1) as known
+and solves the nonlinear equations of voltages and currents using ﬁxed-point iterations.
+Shifting the focus to elements in power distribution systems, we deﬁne each element to be multi-
+phase following the fact that power is usually delivered in multi-phases. As shown in Figure 1, a
+(multi-phase) node, or a bus, can be a pure connection point or include node objects like loads,
+capacitors, or batteries. A (multi-phase) edge is formed by a line, a transformer, or a regulator.
+Loads model the power consumption from the consumers. Capacitors provide reactive power and
+batteries are energy (active power) storage. Lines imitate the connection from one (multi-phase)
+node to another subject to Ohm’s law. Transformers and regulators are for voltage adjustment from
+one node to another.
+Figure 1: A depiction of PowerGym. OpenDSS reads the circuit ﬁles and load proﬁles (introduce
+in environment registration) to initialize the simulation. The environment functions interact with
+OpenDSS to get the state transitions.
+4
+
+
+===== PAGE 5 =====
+
+4.2 Volt-Var Control as An RL Problem
+In this subsection, we describe the Volt-Var control problem in the language of RL. We consider a
+ﬁnite-horizon MDP with H = 24 steps as the horizon because we focus on a daily control with the
+control frequency being one action per hour. Still, the horizon is a variable and hence changeable.
+We will discuss this in the sections of environment registration and experiments. The following
+paragraphs give the details about the observation space, the action space, the state transition, and
+the reward function in PowerGym.
+4.2.1 Observation and Action Spaces
+The observation and action spaces, as summarized in Table 1 and 2, are products of discrete and
+continuous variables. The discrete variables are from the physical constraints of the controllers;
+for example, a capacitor either turns on or oﬀ, a regulator operates on a ﬁnite number of modes
+(tap number), and a discrete battery only has a ﬁnite number of discharge powers. The continuous
+variables are normalized into some bounded ranges; for example, the (per-unit) voltage is represented
+into the unit of the base voltage on a bus, and hence usually bounded in [0.8, 1.2]. The battery’s
+state-of-charge (charge / max charge), or the soc, is in [0.0, 1.0]. The continuous battery’s normalized
+discharge power (discharge power / max discharge power) is in [-1.0, 1.0], where the negative means
+charging and the positive means discharging.
+Depending on the device constraints, a battery control can be either discrete or continuous. This
+aﬀects the action space (Table 2) since the action representations are diﬀerent. Still, because we
+can post-process the observation after receiving it, in the observation space (Table 1), we unify
+the representation of discrete and continuous batteries by mapping the discrete battery’s discharge
+power to the normalized form.
+Whether to discretize the battery makes the action space either multi-discrete or a product of
+multi-discrete and continuous spaces. Either way, the problem is hard for a tabular policy or a
+policy that encodes the actions as one-hot vectors (e.g., DDQN [Van Hasselt et al., 2016]) because
+the size of the discrete part of action space scales exponentially in the number of controllers. Also,
+the possibility of mixing discrete and continuous actions makes it harder to design the policy.
+V ariable Type Range
+Bus voltage cont. [0 .8, 1.2]
+Capacitor status disc. {0, 1}
+Regulator tap number disc. {0,...,N reg act− 1}
+State-of-charge (soc) cont. [0 , 1]
+Discharge power cont. [ −1, 1]
+Table 1: Observation Space. Here, both discrete and continuous batteries give the normalized
+discharge power. Nreg act is the number of taps of a regulator (default value: 33).
+4.2.2 State T ransition
+We now describe the state transition function s′ =T (s,a ) in PowerGym. With the descriptions in
+Table 1 and 2, s′ is represented as
+s′ = [Vols(s,a ), cap(a), reg(a), soc(s,a ), dis(s,a )]. (4)
+5
+
+
+===== PAGE 6 =====
+
+V ariable Type Range
+Capacitor status disc. {0, 1}
+Regulator tap number disc. {0,...,N reg act− 1}
+Discharge power (disc.) disc. {0,...,N bat act− 1}
+Discharge power (cont.) cont. [ −1, 1]
+Table 2: Action Space. The discrete battery uses the discretized discharge power while the continu-
+ous battery uses the normalized one. Nbat act is the number of a discrete battery’s discharge power
+(default value: 33).
+Vols(s,a ) is the next set of voltages and depends on action a and the stochasticity of loads, which
+we model using the load proﬁles (will discuss in environment design). cap(a) and reg(a) are the next
+statuses of capacitors and regulators. soc( s,a ) and dis(s,a ) are the next soc’s and discharge powers
+of batteries. Both of them depend on the current state s because a battery’s soc cannot go beyond
+full charge (soc = 1) or depleted (soc = 0). To enforce this, we project the attempted discharge
+power in an action a to the allowed range based on s, making dis(s,a ) a function of (s,a ).
+4.2.3 Reward F unction
+We implement the objective of a Volt-Var problem, Eq. (3), into a reward function as follows:
+r(s,s′,i ) =−fvolt(s′)−fctrl(s,s′,i )−fpower(s′) (5)
+fpower(s′) = wpower
+PowerLoss(s′)
+TotalPower(s′) (6)
+s is a concatenation of all observations in the current step, s′ is that in the next step, and i∈
+[0,...,H − 1] is the episode step. The dependency on step i implies the reward could be non-
+stationary. The power loss, Eq. (6), is a ratio of the overall power loss to the total power. The
+voltage violation and control error are expressed in Eq. (7) and (8).
+Eq. (5) is expressed as r(s,s′,i ), not r(s,a,i ), because the action a is a part of the next state
+s′. Mathematically, r(s,a,i ) and r(s,s′,i ) are equivalent because s′ =T (s,a ) is a function of (s,a )
+under the state transition function T .
+The voltage violation, Eq. (7), is a sum of worst-case voltage violations among all phases across
+all the nodes in the system. The upper/lower violation thresholds ( V /V ) are set as ±5% of the
+per-unit voltage V as a result of the US voltage regulation standard [ANSI, 2011].
+fvolt(s′) =
+∑
+n∈N
+( max
+p∈Phases(n)
+Vn,p(s′)−V )+
++ (V− min
+p∈Phases(n)
+Vn,p(s′))+,
+(7)
+where (·)+ is a shorthand for max(·, 0). Thereby, the upper violation (max pVn,p−V )+ is positive
+when maxpVn,p >V and zero otherwise.
+The control error, Eq. (8), is a sum of capacitors’ and regulators’ switching penalties (1 st & 2nd
+rows) and batteries’ discharge penalty and soc penalty (3 rd row). These penalties discourage the
+policy from making frequent changes and slow the devices from wear out. Note the discharge error
+Pb(s′)+
+Pb
+, with Pb being the max power, has a ( ·)+ function as the battery degradation is primarily
+6
+
+
+===== PAGE 7 =====
+
+caused by the battery discharging power P b > 0. Besides, the soc penalty has an indicator of the
+last time step Ii=H to encourage a battery b to return to its initial state-of-charge soc0b. Hence, the
+reward is stationary if w soc = 0 and non-stationary otherwise.
+fctrl(s,s′,i ) =
+∑
+c∈caps
+wcap|Statusc(s)− Statusc(s′)|
++
+∑
+r∈regs
+wreg|TapNumr(s)− TapNumr(s′)|
++
+∑
+b∈bats
+wdis
+Pb(s′)+
+Pb
++ wsocIi=H|socb(s′)− soc0b|,
+(8)
+where c, r, b represent a capacitor, a regulator, and a battery. Status c, TapNumr, Pb, socb are
+status of c, tap number of r, discharge power of b, and soc of b.
+5 Design of PowerGym
+5.1 Environment Instantiation
+Similar to the OpenAI Gym, PowerGym provides make_env() to instantiate an environment:
+make_env(env_name, worker_idx=None)
+env_name is the name of the registered environment. worker_idx is used (if not None) for parallel
+execution, which we detail in the subsection of load proﬁles.
+make_env() reads the following information. First, PowerGym reads circuit ﬁles into the envi-
+ronment class, followed by leveraging OpenDSS to compile the ﬁle, as shown in Figure 1. Secondly,
+to deﬁne the hyper-parameters that aﬀects the RL training under the same system, PowerGym
+needs information such as the horizon, the number of actions of a regulator/battery and weights
+of the power loss, capacitor’s switch loss, regulator’s switch loss, battery’s discharge loss, battery’s
+state-of-charge (soc) loss. The next subsection introduces the customization of such information.
+5.2 Environment Registration and Customization
+Users can customize their environment by registering a new environment name associated with
+the required information. This is done by appending the information to the dictionaries in the
+PowerGym register. Below is an example of the dictionary. dss_file is the main circuit ﬁle that
+OpenDSS compiles. Users can edit dss_file to change the circuit objects and structure. Users
+can also change the hyper-parameters. max_episode_steps is the horizon. It is 24 by default as
+we focus on the daily control. act_num is the shorthand of the number of actions, so the battery
+becomes continuous if bat_act_num is inﬁnity and discrete if ﬁnite. The other parameters are the
+weights in the reward function shown in Eq. (5).
+’13Bus’: {
+’system_name’: ’13Bus’,
+’dss_file’: ’IEEE13Nodeckt_daily.dss’,
+’max_episode_steps’: 24,
+’reg_act_num’: 33,
+’bat_act_num’: 33,
+’power_w’: 10.0,
+’cap_w’: 1.0/33,
+7
+
+
+===== PAGE 8 =====
+
+’reg_w’: 1.0/33,
+’soc_w’: 0.0/33,
+’dis_w’: 6.0/33 }
+Besides the information shown above, PowerGym also depends on the load proﬁles (see Figure 1
+and the subsequent subsection) and the other circuit ﬁles. These ﬁles are customizable and can be
+found in the folder of systems/system_name of the repository. For example, the above shows users
+can ﬁnd customizable ﬁles in the folder systems/13Bus.
+5.3 Default Registered Environments
+System Environment Names
+13Bus 13Bus, 13Bus_cbat, 13Bus_soc
+13Bus_cbat_soc
+34Bus 34Bus, 34Bus_cbat, 34Bus_soc
+34Bus_cbat_soc
+123Bus 123Bus, 123Bus_cbat, 123Bus_soc
+123Bus_cbat_soc
+8500Node 8500Node, 8500Node_cbat
+8500Node_soc, 8500Node_cbat_soc
+Table 3: Environment is named in {system name}_{use continuous battery }_{use soc
+penalty}.
+In Table 3, each system (summarized in Table 4) in PowerGym has four default environments:
+vanilla, continuous battery, soc, continuous battery & soc. The diﬀerence lies only in the battery’s
+settings; hence capacitors and regulators are the same across these four environments.
+The presence of cbat aﬀects the battery’s number of discharge power: without cbat, the number
+is ﬁnite (33 by default), and the battery’s model is discrete; with cbat, the number is inﬁnite, and
+the battery’s model is continuous. On the other hand, soc tells the state-of-charge penalty on the
+battery at the end of the horizon: without soc, the soc penalty is zero, and the reward is stationary;
+with soc, the soc penalty is positive, and the reward is non-stationary. Besides the four default
+environments, one can call a scaled environment by appending a scale to an environment name; e.g.,
+13Bus_s1.5 scales the loads by 1.5. We will revisit the load scaling in the subsection of load proﬁles.
+System # Caps # Regs # Bats
+13Bus 2 3 1
+34Bus 2 6 2
+123Bus 4 7 4
+8500Node 10 12 10
+Table 4: System speciﬁcations. The system layouts can be found in the Appendix.
+5.4 Gym-like Usage
+PowerGym supports Gym-like usages such as reset, step, random action sampling, and visualization.
+The design is compatible with most RL algorithms. Below is a brief overview of these functions.
+8
+
+
+===== PAGE 9 =====
+
+obs = Env.reset(load_profile_idx=0)
+The reset function initializes the system and returns an initial observation. The dynamics of the
+load are controlled by the load proﬁle index and will be discussed in the next subsection. The initial
+statuses of capacitors, regulators, and batteries are set as ”on”, full tap number, and (full charge,
+zero discharge power), respectively.
+obs, reward, done, info = Env.step(action)
+The step function takes an action as the input and returns the next state, reward, done signal, and
+the information dictionary. Since the current design does not deﬁne a terminal state that should
+be strictly avoided, the done signal is true only when the episode step reaches the horizon. The
+information dictionary includes several details about the reward such as capacitor error, regulator
+error, discharge error, soc error, and soc (all in average), which also facilitates the application of
+multi-objective RL [Liu et al., 2014].
+action = Env.random_action()
+Random actions can also be generated by Env.action_space.sample() and the random seed is set
+by Env.seed(). The action is a (Ncap +Nreg +Nbat)-dimensional array for the control signal on the
+controllers, with N being the number of a certain controller.
+fig, pos = Env.plot_graph()
+The plot graph function returns a Matplotlib ﬁgure and a dictionary of node positions for users to
+visualize the network status. It supports options such as show_voltages, show_controllers, and
+show_actions.
+5.5 Other Usages and Constraints of Load Proﬁles
+To simulate load dynamics, OpenDSS supports time-series simulations following some predeﬁned
+load curves. A group of predeﬁned curves of all loads is called a load proﬁle. As mentioned in the
+previous subsection, Env.reset() has an option of load proﬁle selection. Hence, PowerGym models
+the stochasticity of state transition using the load proﬁles.
+By enlarging the values in the load proﬁle with a ﬁxed scale, PowerGym creates environments with
+various load scales. Since power consumption scales linearly with the load scale, the environment
+tends to be hard under a large load scale. Referring to the subsection of default environments, a
+scaled environment is instantiated by appending a scale to an environment name. During the call,
+PowerGym generates the load proﬁles under the corresponding scale factor and another text ﬁle
+to store the current load scale. Note the load proﬁle is regenerated only if the previous load scale
+(stored in the text ﬁle) is diﬀerent from the current one.
+Due to the ﬁle dependency on the load proﬁle, parallel execution is possible under certain con-
+ditions. As mentioned earlier, the worker index of make_env() is used for parallel execution. When
+it is None, PowerGym cannot execute two environments on the same system (e.g., cannot execute
+13Bus, 13Bus_cbat together) due to the conﬂict of load proﬁle selection. This is solved when the
+worker index is an integer because each worker has a distinct proﬁle selection ﬁle. However, even
+with the worker index, PowerGym cannot execute environments in parallel with names that diﬀer
+only in the load scales (e.g., 13Bus_s1.0, 13Bus_s2.0) because it only allows one load scale at any
+given time.
+9
+
+
+===== PAGE 10 =====
+
+6 Experiments
+6.1 Cumulative Rewards in Default Environments
+0.00 0.25 0.50 0.75 1.00 1.25 1.50 1.75 2.00
+time step 1e4
+40
+30
+20
+10
+0
+cumulative reward
+13Bus
+SAC: -5.5±0.34
+cbat_SAC: -5.41±0.42
+PPO: -19.42±5.22
+random: -45.46±0.71
+0.0 0.5 1.0 1.5 2.0
+time step 1e4
+100
+80
+60
+40
+20
+0
+cumulative reward
+34Bus
+cbat_SAC: -5.25±0.3
+SAC: -5.13±0.31
+PPO: -74.41±16.55
+random: -97.48±1.92
+0.0 0.5 1.0 1.5 2.0
+time step 1e4
+175
+150
+125
+100
+75
+50
+25
+0
+cumulative reward
+123Bus
+cbat_SAC: -7.53±0.27
+SAC: -7.91±0.57
+PPO: -81.22±8.76
+random: -167.54±5.74
+0.0 0.5 1.0 1.5 2.0
+time step 1e4
+1.75
+1.50
+1.25
+1.00
+0.75
+0.50
+0.25
+0.00
+cumulative reward
+1e4 8500Node
+SAC: -202.0±57.84
+cbat_SAC: -269.24±64.08
+PPO: -5593.96±354.08
+random: -6558.08±169.81
+Figure 2: Cumulative rewards on test load proﬁles for diﬀerent agents in 40k steps. The labels
+denote the average and standard deviation of the ﬁnal rewards.
+To show the applicability of PowerGym, we have trained two popular RL algorithms as bench-
+marks on our environments: Proximal Policy Optimization (PPO) [Schulman et al., 2017] and Soft
+Actor-Critic (SAC) [Haarnoja et al., 2018], with the implementations of PPO based on Fujita et al.
+[2021] and SAC on Fan and Wang [2021]. Since PPO is on-policy while SAC is oﬀ-policy, these two
+algorithms give us a proxy of the expected performance of on-policy versus oﬀ-policy algorithms in
+the environments. For comparisons, both PPO and SAC have been trained on multi-discrete actions
+by default. In addition, SAC has been trained on environments with continuous batteries (cbat) to
+compare the environments with diﬀerent battery settings. The experiments are run on a server with
+one AMD Ryzen Threadripper 3970X CPU and one Nvidia RTX 3090 GPU.
+The experiments have been designed as follows: The load proﬁles are randomly partitioned into
+two halves, one for training and the other for testing. During training, the policy is tested on
+test load proﬁles every 5 episodes; or equivalently every 120 steps as the horizon is 24. Lastly, all
+experiments are performed across ten random seeds.
+In Figure 2, the label ”random” denotes an untrained policy that samples actions uniformly from
+the action space. As expected, SAC converges faster and outperforms PPO across all environments,
+which aligns with the SAC paper [Haarnoja et al., 2018] that has been demonstrated on the MuJoCo
+[Todorov et al., 2012]. Due to the experiment design (evaluation at every 120 steps), all curves start
+at step 120 instead of step 0. The ﬁrst evaluation (step 120) reveals the algorithms’ performance
+based on the ﬁrst few updates: PPO is similar to random policy while SAC isn’t. The fact that
+10
+
+
+===== PAGE 11 =====
+
+PPO is near the random policy validates the clipping nature of its policy gradient. Clipping makes
+PPO update slowly yet steadily and hence similar to random policy in the early steps. As for SAC,
+because its DDPG-style policy gradient [Silver et al., 2014] isn’t clipped, SAC suﬀers more from
+the initial inaccuracy of Q-function and hence deviates from the random policy in the early steps.
+Finally, the performances of SAC and cbat_SAC are very similar, implying discrete and continuous
+batteries share similar behaviors, and SAC successfully adapts to both.
+To sum up, we have demonstrated the applicability of PPO and SAC in PowerGym and the
+sample eﬃciency of SAC. We have also shown that environments with discrete or continuous batteries
+have similar performances.
+6.2 Case Study: 123Bus
+Figure 3: Layout of 123Bus system
+We take the 123Bus system (Figure 3) as an example to further analyze the behavior of the
+control policy in PowerGym. Speciﬁcally, we focus on the continuous battery scenario because
+the battery may arbitrarily discharge/charge within an allowable range in practice. For this case
+study, we consider four variations: vanilla (cbat), scaled loads (cbat_s2.5), with soc penalty (soc),
+and scaled loads with soc penalty ( cbat_soc_s2.5). As mentioned in the default environment
+section, both soc penalty and large load scale make the environment more challenging, as the former
+introduces a non-stationary reward while the latter incurs large power consumption. Thereby, we
+would like to see how the control policy adapts to diﬀerent scenarios.
+The ﬁrst row of Figure 4 visualizes the average switching errors of capacitors and regulators
+respectively. Both errors are small in most time steps across all scenarios. Hence, the policies for
+both capacitors and regulators only make large changes when needed while making small adjustments
+the rest of the time. Note the behavior of the ﬁrst 1000 steps and the later steps are diﬀerent because
+the RL exploration starts after the ﬁrst 1000 steps of random exploration.
+11
+
+
+===== PAGE 12 =====
+
+0
+1
+0
+1
+0
+1
+0 5000 10000 15000 20000
+time step
+0
+1
+average cap error
+cbat cbat_s2.5 cbat_soc cbat_soc_s2.5
+0
+20
+0
+20
+0
+20
+0 5000 10000 15000 20000
+time step
+0
+20
+average regulator error
+cbat cbat_s2.5 cbat_soc cbat_soc_s2.5
+0.025
+0.050
+0.025
+0.050
+0.025
+0.050
+0 5000 10000 15000 20000
+time step
+0.025
+0.050power loss ratio
+cbat cbat_s2.5 cbat_soc cbat_soc_s2.5
+0
+10
+0
+10
+0
+10
+0 5000 10000 15000 20000
+time step
+0
+10
+volatage_violation_err
+cbat cbat_s2.5 cbat_soc cbat_soc_s2.5
+0.0
+0.5
+0.0
+0.5
+0.0
+0.5
+0 5000 10000 15000 20000
+time step
+0.0
+0.5
+average discharge error
+cbat cbat_s2.5 cbat_soc cbat_soc_s2.5
+0
+1
+0
+1
+0
+1
+0 5000 10000 15000 20000
+time step
+0
+1
+average SoC error
+cbat cbat_s2.5 cbat_soc cbat_soc_s2.5
+Figure 4: Immediate Errors on capacitors, regulators, power, voltage, discharge, and soc for
+123Bus_cbat.
+The second row of Figure 4 shows the power loss ratio and the voltage violation. Because of
+the load scaling, the 2.5-scaled environments have the higher voltage violations than the un-scaled
+environments ( cbat_s2.5 > cbat and cbat_soc_s2.5 > cbat_soc). Furthermore, the voltage
+violation of soc_s2.5 is greater than that of s2.5 as the soc penalty makes the policy on batteries
+more restrictive and non-stationary. As for the power loss, since it is a diﬃcult objective, it barely
+improves over time. Still, we see that the power losses on the 2.5-scaled environments are higher than
+the un-scaled counterparts. This is because large voltage violations cause large voltage diﬀerences
+on the lines, which brings up the power loss on the lines.
+Finally, the third row of Figure 4 shows the battery activity in discharge errors and soc errors.
+12
+
+
+===== PAGE 13 =====
+
+Since the battery is an energy storage device, it is useful when the environment lacks power and
+has high voltage violations. Hence, the battery barely discharges in the un-scaled environments
+and maintains mostly zero soc error. As for the scaled environments ( s2.5 & soc_s2.5), because
+s2.5 discharges frequently, it has smaller voltage violations but higher soc error. In comparison,
+soc_s2.5 discharges less and has a higher voltage violation but smaller soc error. Therefore, there
+is a trade-oﬀ between battery activity and voltage violation in heavily-loaded environments: the
+more battery activity, the less voltage violation, and RL algorithms need to ﬁnd a dedicated balance
+between the two.
+All in all, the soc penalty and the load scale aﬀect the diﬃculty of a PowerGym environment.
+The diﬃculty can be evaluated by power losses, voltage violations, and battery activities. The harder
+an environment is, the more power losses, voltage violations, and battery activities.
+6.3 Eﬀects of Horizons
+0.0 0.5 1.0 1.5 2.0
+time step 1e4
+800
+600
+400
+200
+0
+cumulative reward
+123Bus_cbat_SAC
+h24: -7.53±0.27
+h48: -11.79±0.73
+h96: -19.21±0.26
+0.0 0.5 1.0 1.5 2.0
+time step 1e4
+6
+5
+4
+3
+2
+1
+0
+cumulative reward
+1e4 8500Node_cbat_SAC
+h24: -269.24±64.78
+h48: -568.74±307.87
+h96: -1136.34±182.24
+Figure 5: Eﬀects of horizon in 20k steps. (h24, h48, h96) stand for horizon (24, 48, 96).
+Figure 5 shows the testing cumulative reward w.r.t. the horizon for 123Bus and 8500Node
+systems. We only analyze under the continuous battery with the SAC algorithm as this is the
+best-performed setting according to Figure 2. As the cumulative reward scales linearly w.r.t. the
+horizon, h48’s cumulative reward is roughly twice of h24’s and h96’s is four times of h24’s. Besides,
+the convergence speeds w.r.t. horizons are similar in 123Bus for the fact that the 123Bus system is
+a more stable system and less likely to have voltage violations. On the other hand, 8500Node is less
+stable, resulting in longer steps to converge in a longer horizon.
+6.4 Diﬃculty Comparisons
+As a concluding remark, we discuss the trend of PowerGym’s diﬃculty in four aspects: problem size,
+base voltage violation, load scale, and soc penalty. It helps users to choose the best environment for
+their applications.
+Problem size refers to the dimensions of an environment; e.g., horizon, sizes of state, and action
+spaces. The larger horizon makes an environment harder as the error of value/Q-function is usually
+quadratic to the horizon [Duan et al., 2020]. Similarly, the larger state and action spaces complicate
+an environment. Under a ﬁxed horizon, we expect the problem complexity in PowerGym follows
+8500Node > 123Bus > 34Bus > 13Bus.
+13
+
+
+===== PAGE 14 =====
+
+Base voltage violation is the tendency of violating the voltage in an un-scaled environment. It
+depends on the structure of the distribution system and the default load proﬁles. One may ﬁnd a
+small system (small number of nodes) with high base voltage violation or a big system with low
+base voltage violation. For instance, the tendency of base voltage violation is 8500Node > 34Bus>
+13Bus> 123Bus, as the voltage violation is the major term in the reward function and the training
+speed in Figure 2 follows the reverse order.
+Load scale aﬀects a PowerGym environment by changing the scale of the load proﬁles. A high
+load scale brings up the load power consumption, which increases the chance of voltage violations
+and makes the problem harder.
+The soc penalty determines the stationarity of the battery behavior. With the soc penalty, the
+battery behaves non-stationarily as the battery should discharge at peak hours and charge at oﬀ-
+peak hours. Because a non-stationary behavior is harder to train than a stationary one, the soc
+error of cbat_soc_s2.5 in Figure 4 is mostly zero but less stable.
+7 Conclusion
+We develop a gym-like open-source environment, PowerGym, to facilitate RL research/adaptation
+for Volt-Var control in power distribution systems. PowerGym encourages power system researchers
+to make fair comparisons on RL algorithms using the same environment. It includes suﬃcient
+variations (problem size, base voltage violation, load scale, and soc penalty) to study diﬀerent
+aspects of the Volt-Var control. PowerGym also acts as a base for researchers/engineers to adopt
+RL algorithms to power distribution systems in real life: it provides a detailed customization guide for
+researchers/engineers who use PowerGym with their own proprietary power distribution systems.
+Our RL experiments suggest the correctness of the PowerGym design. The cumulative rewards
+achieved by our RL agents serve as a baseline for the PowerGym users. Future work on other
+problems in power distribution systems is underway.
+8 Acknowledgement
+We thank Siddharth Bhela for the instructions on OpenDSS, Suat Gumussoy for the feedbacks on
+environment design and Ulrich Muenz for the general supports on the project development.
+References
+Vesna Borozan, Mesut E Baran, and Damir Novosel. Integrated volt/var control in distribution
+systems. In 2001 IEEE Power Engineering Society Winter Meeting. Conference Proceedings (Cat.
+No. 01CH37194), volume 3, pages 1485–1490. IEEE, 2001.
+Masoud Farivar, Lijun Chen, and Steven Low. Equilibrium and dynamics of local voltage control in
+distribution systems. In 52nd IEEE Conference on Decision and Control , pages 4329–4334, 2013.
+Lingwen Gan, Na Li, Ufuk Topcu, and Steven H Low. Exact convex relaxation of optimal power
+ﬂow in radial networks. IEEE Transactions on Automatic Control , 60(1):72–87, 2014.
+Zhifang Yang, Haiwang Zhong, Qing Xia, Anjan Bose, and Chongqing Kang. Optimal power ﬂow
+based on successive linear approximation of power ﬂow equations. IET Generation, Transmission
+& Distribution, 10(14):3654–3662, 2016.
+14
+
+
+===== PAGE 15 =====
+
+Antoine Marot, Benjamin Donnot, Gabriel Dulac-Arnold, Adrian Kelly, A¨ ıdan O’Sullivan, Jan
+Viebahn, Mariette Awad, Isabelle Guyon, Patrick Panciatici, and Camilo Romero. Learning
+to run a power network challenge: a retrospective analysis. arXiv preprint arXiv:2103.03104 ,
+2021.
+Deunsol Yoon, Sunghoon Hong, Byung-Jun Lee, and Kee-Eung Kim. Winning the l2rpn challenge:
+Power grid management via semi-markov afterstate actor-critic. In International Conference on
+Learning Representations, 2020.
+Greg Brockman, Vicki Cheung, Ludwig Pettersson, Jonas Schneider, John Schulman, Jie Tang, and
+Wojciech Zaremba. Openai gym. arXiv preprint arXiv:1606.01540 , 2016.
+IEEE PES. Ieee pes test feeders. https://site.ieee.org/pes-testfeeders/resources/, 2010.
+Accessed: 2021-07-28.
+RC Dugan and RF Arritt. The ieee 8500-node test feeder. Electric Power Research Institute, Palo
+Alto, CA, USA , 2010.
+Volodymyr Mnih, Adria Puigdomenech Badia, Mehdi Mirza, Alex Graves, Timothy Lillicrap, Tim
+Harley, David Silver, and Koray Kavukcuoglu. Asynchronous methods for deep reinforcement
+learning. In International conference on machine learning , pages 1928–1937. PMLR, 2016.
+John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. Proximal policy
+optimization algorithms. arXiv preprint arXiv:1707.06347 , 2017.
+Tuomas Haarnoja, Aurick Zhou, Kristian Hartikainen, George Tucker, Sehoon Ha, Jie Tan, Vikash
+Kumar, Henry Zhu, Abhishek Gupta, Pieter Abbeel, et al. Soft actor-critic algorithms and appli-
+cations. arXiv preprint arXiv:1812.05905 , 2018.
+Zidong Zhang, Dongxia Zhang, and Robert C. Qiu. Deep reinforcement learning for power system
+applications: An overview. CSEE Journal of Power and Energy Systems , 6(1):213–225, 2020. doi:
+10.17775/CSEEJPES.2019.00920.
+Jianwen Sun, Yan Zheng, Jianye Hao, Zhaopeng Meng, and Yang Liu. Continuous multiagent control
+using collective behavior entropy for large-scale home energy management. In Proceedings of the
+AAAI Conference on Artiﬁcial Intelligence , volume 34, pages 922–929, 2020.
+Aisling Pigott, Constance Crozier, Kyri Baker, and Zoltan Nagy. Gridlearn: Multiagent reinforce-
+ment learning for grid-aware building energy management. arXiv preprint arXiv:2110.06396 ,
+2021.
+D. Ernst, M. Glavic, and L. Wehenkel. Power systems stability control: reinforcement learning
+framework. IEEE Transactions on Power Systems , 19(1):427–435, 2004. doi: 10.1109/TPWRS.
+2003.821457.
+Gonzague Henri, Tanguy Levent, Avishai Halev, Reda Alami, and Philippe Cordier. pymgrid: An
+open-source python microgrid simulator for applied artiﬁcial intelligence research. arXiv preprint
+arXiv:2011.08004, 2020.
+Ziming Yan and Yan Xu. Data-driven load frequency control for stochastic power systems: A
+deep reinforcement learning method with continuous action search. IEEE Transactions on Power
+Systems, 34(2):1653–1656, 2019. doi: 10.1109/TPWRS.2018.2881359.
+15
+
+
+===== PAGE 16 =====
+
+Wei Wang, Nanpeng Yu, Jie Shi, and Yuanqi Gao. Volt-var control in power distribution systems
+with deep reinforcement learning. In 2019 IEEE International Conference on Communications,
+Control, and Computing Technologies for Smart Grids (SmartGridComm) , pages 1–7, 2019. doi:
+10.1109/SmartGridComm.2019.8909741.
+Wei Wang, Nanpeng Yu, Yuanqi Gao, and Jie Shi. Safe oﬀ-policy deep reinforcement learning
+algorithm for volt-var control in power distribution systems. IEEE Transactions on Smart Grid ,
+11(4):3008–3018, 2020. doi: 10.1109/TSG.2019.2962625.
+Ying Zhang, Xinan Wang, Jianhui Wang, and Yingchen Zhang. Deep reinforcement learning based
+volt-var optimization in smart distribution systems. IEEE Transactions on Smart Grid , 12(1):
+361–371, 2021. doi: 10.1109/TSG.2020.3010130.
+Yuanqi Gao and Nanpeng Yu. Deep reinforcement learning in power distribution systems: Overview,
+challenges, and opportunities. In 2021 IEEE Power Energy Society Innovative Smart Grid Tech-
+nologies Conference (ISGT), pages 1–5, 2021. doi: 10.1109/ISGT49243.2021.9372283.
+Alex Ray, Joshua Achiam, and Dario Amodei. Benchmarking safe exploration in deep reinforcement
+learning. arXiv preprint arXiv:1910.01708 , 7, 2019.
+Piotr Gaw lowicz and Anatolij Zubow. ns3-gym: Extending openai gym for networking research.
+arXiv preprint arXiv:1810.03943 , 2018.
+B. Donnot. Grid2op- A testbed platform to model sequential decision making in power systems. .
+https://GitHub.com/rte-france/grid2op, 2020.
+Robin Henry and Damien Ernst. Gym-anm: Reinforcement learning environments for active network
+management tasks in electricity distribution systems. Energy and AI, 5:100092, 2021. ISSN 2666-
+5468. doi: https://doi.org/10.1016/j.egyai.2021.100092.
+Antoine Marot, Benjamin Donnot, Camilo Romero, Balthazar Donon, Marvin Lerousseau, Luca
+Veyrin-Forrer, and Isabelle Guyon. Learning to run a power network challenge for training
+topology controllers. Electric Power Systems Research , 189:106635, 2020. ISSN 0378-7796. doi:
+https://doi.org/10.1016/j.epsr.2020.106635. URL https://www.sciencedirect.com/science/
+article/pii/S0378779620304387.
+Alekh Agarwal, Nan Jiang, and S. Kakade. Reinforcement learning: Theory and algorithms. https:
+//rltheorybook.github.io/, 2019.
+Hado Van Hasselt, Arthur Guez, and David Silver. Deep reinforcement learning with double q-
+learning. In Proceedings of the AAAI conference on artiﬁcial intelligence , volume 30, 2016.
+ANSI. Electric power systems and equipment – voltage ratings (60 hz) c84.1, 2011. American
+National Standards Institute (ANSI) Standard: C84.1-2011.
+Chunming Liu, Xin Xu, and Dewen Hu. Multiobjective reinforcement learning: A comprehensive
+overview. IEEE Transactions on Systems, Man, and Cybernetics: Systems , 45(3):385–398, 2014.
+Yasuhiro Fujita, Prabhat Nagarajan, Toshiki Kataoka, and Takahiro Ishikawa. Chainerrl: A deep
+reinforcement learning library. Journal of Machine Learning Research , 22(77):1–14, 2021.
+Ting-Han Fan and Yubo Wang. Soft actor-critic with integer actions. arXiv preprint
+arXiv:2109.08512, 2021.
+16
+
+
+===== PAGE 17 =====
+
+Emanuel Todorov, Tom Erez, and Yuval Tassa. Mujoco: A physics engine for model-based control.
+In 2012 IEEE/RSJ International Conference on Intelligent Robots and Systems , pages 5026–5033.
+IEEE, 2012.
+David Silver, Guy Lever, Nicolas Heess, Thomas Degris, Daan Wierstra, and Martin Riedmiller.
+Deterministic policy gradient algorithms. In International conference on machine learning , pages
+387–395. PMLR, 2014.
+Yaqi Duan, Zeyu Jia, and Mengdi Wang. Minimax-optimal oﬀ-policy evaluation with linear function
+approximation. In International Conference on Machine Learning, pages 2701–2709. PMLR, 2020.
+A Appendix
+A.1 System Layouts
+Figure 6: System layouts: 13Bus, 34Bus, 123Bus, 8500Node (top left to bottom right).
+Table 4 (in main context) and Figure 6 show the controller summary and layouts of the systems.
+13Bus system has 2 capacitors at bus 611, 675; 3 single-phase regulators at the edge (650, rg60); 1
+battery at bus 680. 34Bus system has 2 capacitors at bus 844, 848; 6 single-phase regulators at edge
+(814,814r), (852, 852r) (3 for each); 2 batteries at bus 832, 890. 123Bus system has 4 capacitors at
+bus 83, 88, 90, 92; 1 three-phase regulator at bus 150 and 9 single-phase regulators at bus 9, 25, 160
+17
+
+
+===== PAGE 18 =====
+
+(3 for each); 4 batteries at bus 33, 67, 114, 300. 8500Node system has 10 capacitors (one three-phase
+near the source, nine single-phase at three other locations); 12 single-phase regulators at four buses
+(3 for each bus. One bus is the source. The other buses are shown in the ﬁgure); 10 batteries.
+A.2 Observation and Action Wrapper
+Although the observation and action spaces are composed of discrete and continuous values, for the
+conciseness of representation, we wrap the observation and the action into Numpy arrays as follows.
+wrapped_obs = Concatenate([all phase voltages at each bus,
+all capacitor statuses,
+all regulator tap numbers,
+all battery soc’s and normalized discharge powers])
+action = Concatenate([all capacitor statuses,
+all regulator tap numbers,
+all battery discharge powers])
+Capacitor statuses, regulator tap numbers, and discrete batteries’ discharge powers are represented
+in integers. Continuous batteries’ discharge powers are represented in ﬂoating numbers.
+The wrapped observation is the default output of Env.reset() and Env.step(). Still, users can
+access all phase voltages with the observation dictionary at Env.obs. These two representations of
+observations have the following relation:
+wrapped_obs = Env.wrap_obs(Env.obs)
+A.3 Hyper-parameters
+In this section, we provide a summary of the hyper-parameters of our environments and RL agents.
+The coeﬃcients of the reward function are shown in Table 5.
+V ariable 13Bus 34Bus 123Bus 8500Node
+Nreg act 33
+Nbat act 33 (disc. bat), ∞ (cont. bat)
+wcap 1/33
+wreg 1/33
+wpower 10.0 1.0 10.0 1.0
+wdis 6/33 10/33 7/33 200/33
+wsoc 0.0
+V ariable 13Bus 34Bus 123Bus 8500Node
+wdis 1/33 4/33 5/33 200/33
+wsoc 100/33 500/33 500/33 10000/33
+Table 5: Reward Coeﬃcients: without soc (top), with soc (bottom). The two settings only diﬀer in
+wdis and wsoc, so the RHS only presents their values.
+To train PPO and SAC agents, we use separate deep neural networks to parameterize the policy
+and value/Q functions. Both networks consist of dense layers with the same widths. Table 6 presents
+the suggested hyper-parameters for PPO and SAC.
+18
+
+
+===== PAGE 19 =====
+
+V ariable V alue
+Optimizer Adam
+Learning rate 3E-4
+Discount factor 0.95
+Clip epsilon 0.2
+Batch size 64
+Model update interval 512
+Entropy coeﬃcient 0.01
+V ariable V alue
+Optimizer Adam
+Learning rate 3E-4
+Discount factor 0.95
+Batch size 256
+Model width 512
+Model depth 3
+Entropy coeﬃcient 0.4
+Table 6: Suggested hyper-parameters for PPO (left) and SAC (right).
+19

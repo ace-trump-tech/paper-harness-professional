@@ -1,12 +1,12 @@
-# paper-harness-cv
+# paper-harness-professional
 
 **Languages:** [简体中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-> 面向计算机视觉研究者的多 Agent Auto-Research harness。不是“输入题目直接吐论文”，而是让文献、A+B+C 创新组合、多 GPU 实验、指标评估和写作审查共享同一条可追溯证据链。
+> 面向专业科研工作者的多 Agent Auto-Research harness。当前重点支持 CV 与电网具身智能控制，不是“输入题目直接吐论文”，而是让文献、创新组合、仿真实验、指标评估和写作审查共享同一条可追溯证据链。
 
 <p align="center"><img src="demo/stem_pipeline.svg" alt="CV research harness workflow" width="900"></p>
 
-<p align="center"><a href="docs/cv-exploration-zh.md">CV 工作流</a> · <a href="docs/harness-architecture-zh.md">Harness 设计</a> · <a href="examples/cv_exploration_project.json">配置示例</a></p>
+<p align="center"><a href="docs/cv-exploration-zh.md">CV 工作流</a> · <a href="demo/self-learn/README.md">电网具身智能 Demo</a> · <a href="docs/harness-architecture-zh.md">Harness 设计</a> · <a href="examples/cv_exploration_project.json">配置示例</a></p>
 
 ## 目标
 
@@ -57,6 +57,17 @@ python -m paper_harness.cli run ./runs/cv-demo/project.json
 - 组合优胜者只是下一轮候选，不能自动视作创新成立；必须做人类审查、消融、基线和统计核验。
 - 不自动投稿、不伪造引用、不绕过数据集许可、登录、付费墙或 robots 规则。
 
-## 与本科版的关系
+## 专业版 Demo：电网具身智能控制
 
-`paper-harness-undergraduate` 是独立仓库，优化综述、教师课题和零基础用户。此仓库只服务 CV 探索，不携带本科教学流程，从而保持 GPU/runtime 依赖和研究迭代节奏的独立性。
+`demo/self-learn/` 是专业版的第一个领域 Demo。它包含 4 篇已校验的开放论文、页标记文本、逐篇知识卡片、研究路线、实验蓝图、SHA-256 校验和可重试下载脚本。重点不是让 LLM 直接控制电网，而是把 Grid2Op/PowerGym/Gym-ANM/CommonPower 等仿真器、控制策略和安全门控组织成可审计闭环。
+
+```bash
+cd demo/self-learn
+python3 scripts/extract_pdf_text.py
+```
+
+原始 PDF、提炼文本和知识卡片均保留在 Demo 内；完整研究说明从 [Demo README](demo/self-learn/README.md) 开始。
+
+## 与通用版的关系
+
+`paper-harness-undergraduate` 是独立仓库，面向本科毕业论文、教师课题和零基础用户。专业版保留 GPU/runtime、领域知识库和多 Agent 实验迭代；两个子仓库共同构成完整的 paper-harness 产品。

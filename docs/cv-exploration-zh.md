@@ -1,6 +1,6 @@
 # CV 探索版
 
-`paper-harness-cv` 是面向计算机视觉研究者的半自动 Auto-Research harness。它保留本地优先、可恢复、可审计、证据链和人工闭环的内核，在其上加入 A+B+C 创新组合与多 GPU 子 Agent 的实验编排。
+`paper-harness-professional` 是面向专业科研工作者的半自动 Auto-Research harness。当前以计算机视觉为主，并通过 `demo/self-learn` 扩展到电网具身智能控制。它保留本地优先、可恢复、可审计、证据链和人工闭环的内核，在其上加入 A+B+C 创新组合与多 GPU 子 Agent 的实验编排。
 
 ## 组件与职责
 

@@ -1,0 +1,540 @@
+
+
+===== PAGE 1 =====
+
+PowerGridworld: A Framework for Multi-Agent
+Reinforcement Learning in Power Systems
+David Biagioni, Xiangyu Zhang, Dylan Wald, Deepthi Vaidhynathan,
+Rohit Chintala, Jennifer King, Ahmed S. Zamzam
+Abstract—We present the PowerGridworld software package
+to provide users with a lightweight, modular, and customizable
+framework for creating power-systems-focused, multi-agent Gym
+environments that readily integrate with existing training frame-
+works for reinforcement learning (RL). Although many frame-
+works exist for training multi-agent RL (MARL) policies, none
+can rapidly prototype and develop the environments themselves,
+especially in the context of heterogeneous (composite, multi-
+device) power systems where power ﬂow solutions are required to
+deﬁne grid-level variables and costs. PowerGridworld is an open-
+source software package that helps to ﬁll this gap. To highlight
+PowerGridworld’s key features, we present two case studies
+and demonstrate learning MARL policies using both OpenAI’s
+multi-agent deep deterministic policy gradient (MADDPG) and
+RLLib’s proximal policy optimization (PPO) algorithms. In both
+cases, at least some subset of agents incorporates elements of the
+power ﬂow solution at each time step as part of their reward
+(negative cost) structures.
+I. I NTRODUCTION
+A. Multi-Agent Reinforcement Learning in Energy Systems
+With the increased controllability of power consumption and
+generation at the edge of modern power systems, devising cen-
+tralized control approaches to manage ﬂexible devices within
+these systems is becoming nearly impossible. In particular,
+the dynamical models of these interconnected systems present
+considerable nonlinearities, which challenges the applicability
+of classical control methods. In addition, the conﬂicting opera-
+tional costs/objectives of heterogeneous devices often obstruct
+the formulation of a system-wide operational objective. Thus,
+decentralized, data-driven control approaches, where edge
+controllers utilize data to derive effective local control policies,
+provide a viable pathway to realizing the resilient and efﬁcient
+operation of future energy systems.
+Reinforcement learning (RL) approaches have shown great
+potential in several power systems control and load man-
+agement tasks [1]–[4]. In addition, multi-agent RL (MARL)
+approaches have advanced and have been applied in many
+All authors are with the National Renewable Energy Laboratory,
+Golden, CO 80401, USA. Corresponding author: D. Biagioni
+(dave.biagioni@nrel.gov). This work was authored by the National
+Renewable Energy Laboratory (NREL), operated by Alliance for Sustainable
+Energy, LLC, for the U.S. Department of Energy (DOE) under Contract
+No. DE-AC36-08GO28308. This work was supported by the Laboratory
+Directed Research and Development (LDRD) Program at NREL. The views
+expressed in the article do not necessarily represent the views of the DOE
+or the U.S. Government. The U.S. Government retains and the publisher, by
+accepting the article for publication, acknowledges that the U.S. Government
+retains a nonexclusive, paid-up, irrevocable, worldwide license to publish or
+reproduce the published form of this work, or allow others to do so, for U.S.
+Government purposes.
+Fig. 1. PowerGridworld architecture for an N-agent environment comprised
+of both single-component agents (Agent 1) and multi-component agents,
+which can be added in any number and combination. Given a base system load
+and the agents’ individual power proﬁles, a power ﬂow solution is computed
+at each control step and may be used to update the agents’ states and rewards.
+complex systems, including games [5] and autonomous driving
+[6]. Recently, MARL approaches have also found applications
+in the power systems domain, with an emphasis on voltage
+regulation problems [7]–[9]. These applications utilize the
+capabilities of MARL to devise local control policies without
+any knowledge of the models of the underlying complex
+systems. However, due to the signiﬁcant focus on applying
+MARL in power system decentralized control tasks, there has
+been no standardized RL test environment that supports the
+development of heterogeneous power system components and
+the deployment of off-the-shelf MARL approaches.
+B. Related Software
+Table I summarizes the features of MARL frameworks for
+power systems.
+1) General MARL Framework: The development of MARL
+is relatively new compared to its single-agent counterpart,
+and there is currently no commonly and widely used MARL
+framework. PettingZoo [10], a Python library, has a goal
+of developing a universal application programming interface
+(API) for formulating MARL problems, as OpenAI Gym [11]
+did for single-agent RL problems. However, because the key
+advantages of PettingZoo—namely, an efﬁcient formulation
+suitable for the turn-based games and an ability to handle
+arXiv:2111.05969v1  [cs.LG]  10 Nov 2021
+
+
+===== PAGE 2 =====
+
+TABLE I
+COMPARISON OF SOFTWARE FEATURES FOR MARL ENVIRONMENTS FOR POWER SYSTEMS .
+Package Power Systems
+Application
+Agent
+Customization
+Composable
+Agents
+Control Step MARL Training Interfaces
+PettingZoo None Unlimited No User-deﬁned RLLib, OpenAI
+CityLearn Demand response Buildings and
+subsystems
+No 1-hour Package-speciﬁc
+GridLearn Demand response,
+voltage regulation
+Buildings and
+subsystems
+No Sub-hourly Package-speciﬁc
+PowerGridworld Any energy manage-
+ment/optimization
+Unlimited Yes User-deﬁned RLLib, OpenAI
+agent creation and death within episodes—are less relevant
+to power system control problems, PowerGridworld does not
+adopt the PettingZoo APIs at this stage for simplicity.
+2) Multi-Agent Energy Systems: CityLearn [12], [13] is
+an open-source library aimed at implementing and evaluating
+MARL for building demand response and energy coordination.
+By design, the heating and cooling demands of buildings in
+CityLearn are guaranteed to be satisﬁed, allowing researchers
+to focus on energy balance and load shifting for the con-
+trol problem. To achieve this, building thermal models and
+associated energy demands are precomputed using Energy-
+Plus [14], and control actions are limited to active energy
+storage decisions rather than those affecting passive (thermal)
+mass. CityLearn is intended to provide a benchmark MARL
+environment from the standpoint of building demand response
+and, as such, it is highly constrained in terms of the types of
+agents and models that are available. CityLearn energy models
+include buildings, heat pumps, energy storage, and batteries,
+while the state and action spaces of the agents themselves
+must be constructed from a predeﬁned variable list. Control
+steps in CityLearn are restricted to 1-hour resolution, and
+grid physics is not modeled. To address this, GridLearn [9]
+utilizes the building models provided in CityLearn and extends
+its functionality to include power system simulation. The
+added power ﬂow model, implemented using pandapower [15],
+allows researchers studying decentralized control to consider
+both building-side and grid-level objectives. The GridLearn
+case study presented in [9] demonstrates that this platform
+can be used to train MARL controllers to achieve voltage
+regulation objectives in a distribution system by controlling
+behind-the-meter resources.
+3) MARL Training: While many open-source choices exist
+for MARL training, we highlight two of the most popular:
+RLLib (multiple algorithms available) and OpenAI’s multi-
+agent deep deterministic policy gradient (MADDPG). RLLib
+[16], [17] is a framework for scalable RL training built on
+the Ray Python library [18], and it supports a variety of
+training paradigms for single-agent, multi-agent, hierarchi-
+cal, and ofﬂine learning. RLLib can be deployed on both
+cloud and high performance computing (HPC) systems, and it
+provides a number of training “abstractions,” enabling users
+to develop custom, distributed RL algorithms. The multi-
+agent API in PowerGridworld is derived from RLLib’s own
+MultiAgentEnv API and thus is readily integrated into
+this framework. OpenAI [19] has played a central role in the
+evolution of both theory and software for RL and MARL. In
+addition to creating the Gym API, OpenAI released a series
+of tutorials and implementations in the mid-2010s that have
+continued to hold traction in the RL community, including
+the SpinningUp blog 1 and the baselines GitHub repository. 2
+The OpenAI implementation [20] of the MADDPG [21] is a
+popular choice for MARL with continuous control.
+As described in greater detail in Section II-A, PowerGrid-
+world makes it easy for users to leverage the implementations
+of both RLLib’s and OpenAI’s RL algorithms.
+To the best of our knowledge, no previous software pack-
+ages exist that enable users to implement arbitrary multi-agent
+scenarios with with a power systems focus—in particular,
+with the ability to incorporate power ﬂow solutions into
+the agents’ observation spaces and rewards. We believe that
+PowerGridworld begins to bridge this gap by enabling highly
+modular, customizable environments that readily integrate with
+open-source, scalable MARL training frameworks such as
+RLLib.
+II. P OWER GRIDWORLD
+A. Description of Software
+PowerGridworld is designed to provide users with a
+lightweight, modular, and customizable framework for creating
+power-systems-focused, multi-agent Gym environments that
+readily integrate with existing RL training frameworks. The
+purpose of this software, which is available as an open-source
+Python package3, is to enable researchers to rapidly prototype
+simulators and RL algorithms for power systems applications
+at the level of detail of their choice, while also enabling the
+use of cloud and HPC via integration with scalable training
+libraries such as RLLib [16] and Stable Baselines [22].
+1) Architecture: The PowerGridworld design pattern is
+based on the OpenAI Gym API, which has become the de
+facto standard interface for training RL algorithms. The Gym
+API essentially consists of the following two methods:
+• reset: Initialize the simulation instance and return an
+observation of the initial state space, s0.
+• step: For each control step, apply an input control
+action, at, and return a a new state space observation,
+1https://spinningup.openai.com/en/latest/
+2https://github.com/openai/baselines
+3https://github.com/NREL/PowerGridworld
+
+
+===== PAGE 3 =====
+
+st; a step reward, rt; a termination ﬂag; and any desired
+metadata.
+A simulator that is wrapped in the Gym API is often referred
+to as an environment, and one instance of the simulation is
+often called an episode.
+The core functionality of the PowerGridworld package is to
+extend the Gym API to include multi-agent simulations and to
+allow a user to combine environments that simulate individual
+devices or subsystems into a single, multi-component agent.
+This “plug-and-play” functionality is highly useful in power
+systems applications because it enables the user to rapidly
+create heterogeneous agents using basic building blocks of
+distributed energy resources (DERs).
+We illustrate the PowerGridworld architecture in Fig. 1.
+Here, the MultiAgentEnv environment (blue) encapsulates
+N agents that subclass one of two types:
+a) ComponentEnv environments (green), which imple-
+ment a single, independent agent. This class is a slight
+extension of the OpenAI Gym API.
+b) MultiComponentEnv environments (yellow), which
+are a composition of component environments. For exam-
+ple, AgentN could represent a smart building agent com-
+posed of building thermodynamics, photovoltaics (PV),
+and battery physics, each implemented as a separate
+ComponentEnv.
+The multi-agent Gym API can be readily plugged into
+an RL training framework such as RLLib (grey), where
+agent-level policies (red) are learned. Once the individ-
+ual device physics has been implemented according to the
+ComponentEnv API, the software automates the creation
+of MultiComponentEnv environments. Any number of
+ComponentEnv and MultiComponentEnv agents can
+then be added to the MultiAgentEnv environment.
+2) Power Flow Solver Integration: Another key feature of
+PowerGridworld is the integration of a power ﬂow solver
+for simulating the grid physics that underlies the multi-agent
+environment. Although our examples utilize the open distri-
+bution system simulator (OpenDSS) [23] to solve the power
+ﬂow on a test feeder, any power ﬂow solver wrapped in the
+PowerFlowSolver API can be utilized.
+B. Advantages
+The advantages of using PowerGridworld over MARL
+software packages are as follows. First, the plug-and-play
+modularity with a three-tier hierarchy ( cf. Fig. 1) allows
+environments to be created from simpler components. Second,
+the multi-agent environment design allows both homogeneous
+and heterogeneous agent types. Third, the power ﬂow solution
+can be used in agent-level states and rewards. Finally, Power-
+Gridworld adheres to RLLib’s multi-agent API, with convert-
+ers for both CityLearn/GridLearn and OpenAI’s MADDPG
+interfaces.
+C. Limitations
+Next, we list some of the limitations of PowerGridworld.
+First, time stepping is synchronous and of ﬁxed frequency.
+However, we have a road map for implementing both hi-
+erarchical and multi-frequency time stepping. Second, the
+communication model is limited. Centralized communication,
+whereby the process driving the environment collects and com-
+municates variables between agents, is relatively straightfor-
+ward to implement using only the Gym API. More advanced
+paradigms require custom implementations. Finally, the initial
+version of the MultiAgentEnv serializes calls to the agents
+(i.e., there is no parallelism).
+III. C ASE STUDIES
+In this section, we present two examples of how Power-
+Gridworld can be used to formulate multi-agent control tasks
+in energy systems.
+A. Multi-Agent Building Coordination Environment
+In the ﬁrst example, we consider three RL agents in a
+homogeneous setting. Each agent controls three components
+within one building: one HV AC system, one on-site PV
+system, and one energy storage (ES) system. Using this setup,
+this example demonstrates how to use the PowerGridworld
+package to model a learning environment that allows agent
+coordination while achieving each agent’s own objective.
+To this end, the MARL system is implemented as follows:
+1) For each agent/building, the HV AC system needs to be
+controlled so that thermal comfort can be realized with
+minimal energy consumption. As a result, the HV AC
+component reward, ri,HVAC
+t , includes penalties for both
+thermal discomfort and energy consumption.
+2) The PV and ES systems are two additional components
+that are controlled by an agent to modify the building’s
+net power consumption, but for simplicity, the rewards
+related to these two components are set to be zero, i.e.,
+ri,PV
+t =ri,ES
+t = 0.
+3) We designed a simple scenario with a sudden PV gen-
+eration drop when the system loading level is high. If
+all three buildings, which connect to the same bus in the
+distribution system, only care about their own objective,
+the voltage at the common bus might fall below the
+limit, i.e., vcomm < v. As a result, voltage support –
+maintaining vcomm≥v – requires the three buildings to
+coordinate with one another.
+Based on the setup above, at control step t and for agent i,
+the total agent reward is
+ri
+t =ri,agent
+t +ri,sys
+t (1)
+in which ri,agent
+t = ri,HVAC
+t +ri,PV
+t +ri,ES
+t is the agent-
+level reward andri,sys
+t =−λ[max(0,vcomm−v) +max(0,v−
+vcomm)]/3 represents the system-level reward, shared evenly
+with all three agents. Here, λ is a large number. Through
+MARL training, each agent should be able to optimize its own
+objective (i.e., keep ri,agent
+t low) and also able to work with
+other agents to avoid any voltage violation (i.e., keep ri,sys
+t
+low).
+
+
+===== PAGE 4 =====
+
+Fig. 2. Learning curves of using MADDPG to train control policies for
+the multi-agent coordinated building control. All x-axes represent training
+iterations. Losses, i.e., Lactor and Lcritic, are averaged among three agents.
+To train control policies for this problem, we use OpenAI’s
+MADDPG implementation. Speciﬁcally, agent i trains a critic
+network (i.e., Qθi (s, a)) in an off-policy manner to minimize
+the mean squared Bellman error (MSBE):
+Li
+critic(θi) = Es,a,ri,s′[[Qθi (s, a)− (ri +γQθi,− (s′, a′)]2]
+(2)
+and the actor (i.e., the control policy µφi (si)) is trained by
+minimizing the following actor loss:
+Li
+actor(φi) =−Es,a[Qi
+θ(s, [...ai−1,µφi (si),ai+1,... ])] (3)
+In the above equations, θi and φi are the RL parameters to
+be optimized, and θi,− represents the target value network
+parameters (a common off-policy learning trick; see [24] for
+details). In our notation, ai and si are the action and state of
+agent i, respectively, and the collection of all agents’ actions
+and states are written as a and s. the The states at the next
+step are denoted s′, and a′ = [µφi (si)|i = 1,... ] are the policy
+chosen actions at s′.
+Fig. 2 shows the learning curves over 350 training iterations.
+By the end of the training, both agent costs and the total cost
+converge to a low level. Lcritic starts at a large value and
+gradually decreases to a value close to zero, indicating that
+the state-action values can be estimated accurately. As the
+value estimation becomes more reliable,Lactor also decreases,
+implying that the control policies are improving to achieve a
+higher reward level for each agent. Finally, the episodic voltage
+violation sum,vvio, is high at the beginning, and as the agents
+learn to coordinate with one another, the voltage violation is
+also eliminated, leading to vvio = 0.
+In summary, this example demonstrates using PowerGrid-
+world to formulate a MARL problem with both competition
+(building comfort) and collaboration (system voltage) among
+agents. Admittedly, instead of na ¨ıvely splitting the system
+penalty evenly among agents to encourage agents’ coordina-
+tion, a more advanced approach could be ﬂexibly implemented
+using this framework by modifying the corresponding interfac-
+ing functions.
+B. Multi-Agent Environment With Heterogeneous Agents
+A key feature of the PowerGridworld package is that it
+enables users to model heterogeneous agents that interact
+both with one another and with the grid. To demonstrate this
+feature, we developed a simple example with three differ-
+ent agents consisting of one smart building—simulated as a
+MultiComponentEnv composed of a ﬁve-zone building, a
+solar panel, and a battery component environment—and two
+independent component environments representing a PV array
+and an electric vehicle (EV) charging station. The agents here
+are loosely coupled according to their reward structures and
+observation spaces, as described next.
+Smart building ( i = 1 ). The ﬁve-zone building has a
+simple reward function characterized by a soft constraint that
+zone temperatures be maintained within a comfort range. The
+building thermal model used is the same as in Section III-A;
+the reward function is similar, except that it does not take
+power consumption into account.
+PV array ( i = 2 ). Next, we include a controllable PV
+array as a source of real power injection, with the purpose of
+mitigating voltage violations stemming from high real power
+demand on the distribution feeder. We model a simple control
+whereby the real power injection can be curtailed between 0%
+and 100% of available power from the panels; the observation
+space consists of both real power available from the panels and
+the minimum bus voltage on the feeder, vmin. (The scenario
+we consider is stable with respect to maximum feeder voltage.)
+The reward function is given by a soft penalty on the minimum
+bus voltage, which is computed using OpenDSS.
+EV charging station ( i = 3 ). Finally, we consider an
+EV charging station with an aggregate, continuous control,
+a3∈ [0, 1], representing the rate of charging for all charging
+vehicles. For example, with action a3 = 0.25, all charging
+vehicles will charge at 25% of the maximum possible rate.
+The distribution of vehicles is control dependent because, as
+vehicles become fully charged, they leave the station and thus
+reduce the aggregate load proﬁle. Furthermore, each vehicle
+has prespeciﬁed (exogenous) arrival and departure times, be-
+fore and after which it cannot charge. The observation space
+consists of a handful of continuous variables characterizing the
+station’s current occupancy and aggregate power consumption,
+as well as aggregate information about the state of the charging
+vehicles. The reward function balances the local task of
+meeting demand with a grid-supportive task of keeping the
+total real power consumption under a peak threshold. Note
+that, while the charging station does not directly respond to
+grid signals, the soft constraint on peak power incentivizes
+load shifting.
+Using RLLib’s multi-agent training framework, we train
+separate proximal policy optimization (PPO) [25] policies
+
+
+===== PAGE 5 =====
+
+Fig. 3. Learning curves for independent PPO policies for the heterogeneous
+control problem trained using RLLib. The PPO loss function, L, is given in
+(4). All x-axes represent training iterations.
+for each agent, with each agent attempting to optimize its
+own reward. Although training multi-agent policies in this
+way is generally challenging due to nonstationarity, here, the
+agents are only loosely coupled through bus voltages in the
+PV agent’s reward function, and training converges without
+issue—see Fig. 3. The lower panel in the ﬁgure shows the
+PPO loss function for each agent’s policy,
+L = E
+[ T∑
+t=0
+min
+( πθ(at|st)
+πθold (at|st)
+ˆA(at,st),g
+(
+ϵ, ˆA(at,st)
+))]
+(4)
+where ˆA is the advantage estimator, g(ϵ,·) is a clipping
+function with threshold ϵ, andθold refers to the policy weights
+from the previous training iteration. We refer the reader to
+[25] for additional details about the PPO algorithm and loss
+function.
+IV. C ONCLUSION
+PowerGridworld ﬁlls a gap in MARL for power systems
+by providing users with a lightweight framework for rapidly
+prototyping customized, grid-interactive, multi-agent simula-
+tions with a bring-your-own-model philosophy. The multi-
+agent Gym API and other API converters enable users to
+rapidly integrate with existing MARL training frameworks,
+including RLLib (multiple algorithms) and OpenAI’s MAD-
+DPG implementation. Unlike the CityLearn and GridLearn
+software packages, PowerGridworld does not provide carefully
+designed benchmarks for a given application, such as demand
+response with voltage regulation. Rather, it provides the user
+with abstractions that streamline experimentation with novel
+multi-agent scenarios, component Gym environments, and
+MARL algorithms where the power ﬂow solutions are essential
+to the problem. Integration with RLLib, in particular, paves
+the way for the use of supercomputing and HPC resources for
+RL training, which will become ever more important as the
+complexity of MARL simulations continues to increase.
+REFERENCES
+[1] B. J. Claessens, P. Vrancx, and F. Ruelens, “Convolutional neural
+networks for automatic state-time feature extraction in reinforcement
+learning applied to residential load control,”IEEE Transactions on Smart
+Grid, vol. 9, no. 4, pp. 3259–3269, 2016.
+[2] H. Xu, A. D. Dom ´ınguez-Garc´ıa, and P. W. Sauer, “Optimal tap setting
+of voltage regulation transformers using batch reinforcement learning,”
+IEEE Transactions on Power Systems , vol. 35, no. 3, pp. 1990–2001,
+2019.
+[3] Q. Yang, G. Wang, A. Sadeghi, G. B. Giannakis, and J. Sun, “Two-
+timescale voltage control in distribution grids using deep reinforcement
+learning,” IEEE Transactions on Smart Grid , vol. 11, no. 3, pp. 2313–
+2323, 2019.
+[4] J. Duan et al., “Deep-reinforcement-learning-based autonomous voltage
+control for power grid operations,” IEEE Transactions on Power Sys-
+tems, vol. 35, no. 1, pp. 814–817, 2019.
+[5] O. Vinyals et al. , “Grandmaster level in StarCraft II using multi-agent
+reinforcement learning,” Nature, vol. 575, no. 7782, pp. 350–354, 2019.
+[6] S. Shalev-Shwartz, S. Shammah, and A. Shashua, “Safe, multi-
+agent, reinforcement learning for autonomous driving,” arXiv preprint
+arXiv:1610.03295, 2016.
+[7] Y . Gao, W. Wang, and N. Yu, “Consensus multi-agent reinforcement
+learning for volt-var control in power distribution networks,” IEEE
+Transactions on Smart Grid , 2021.
+[8] D. Chen et al., “PowerNet: Multi-agent deep reinforcement learning for
+scalable powergrid control,”IEEE Transactions on Power Systems, 2021.
+[9] A. Pigott, C. Crozier, K. Baker, and Z. Nagy, “GridLearn: Multiagent
+reinforcement learning for grid-aware building energy management,”
+arXiv preprint arXiv:2110.06396 , 2021.
+[10] J. K. Terry et al. , “Pettingzoo: Gym for multi-agent reinforcement
+learning,” arXiv preprint arXiv:2009.14471 , 2020.
+[11] G. Brockman et al., “OpenAI Gym,” arXiv preprint arXiv:1606.01540 ,
+2016.
+[12] J. R. V ´azquez-Canteli, J. K ¨ampf, G. Henze, and Z. Nagy, “CityLearn
+v1.0: An OpenAI Gym environment for demand response with deep
+reinforcement learning,” in Proceedings of the 6th ACM International
+Conference on Systems for Energy-Efﬁcient Buildings, Cities, and Trans-
+portation, 2019, pp. 356–357.
+[13] J. R. Vazquez-Canteli, S. Dey, G. Henze, and Z. Nagy, “CityLearn:
+Standardizing research in multi-agent reinforcement learning for
+demand response and urban energy management,” arXiv preprint
+arXiv:2012.10504, 2020.
+[14] D. B. Crawley et al. , “EnergyPlus: creating a new-generation building
+energy simulation program,” Energy and Buildings , vol. 33, no. 4, pp.
+319–331, 2001.
+[15] L. Thurner et al., “pandapower—an open-source python tool for conve-
+nient modeling, analysis, and optimization of electric power systems,”
+IEEE Transactions on Power Systems , vol. 33, no. 6, pp. 6510–6521,
+2018.
+[16] E. Liang et al. , “RLlib: Abstractions for distributed reinforcement
+learning,” in International Conference on Machine Learning . PMLR,
+2018, pp. 3053–3062.
+[17] “RLLib: Scalable Reinforcement Learning,” https://docs.ray.io/en/latest/
+rllib.html, accessed: 2021-11-03.
+[18] P. Moritz et al. , “Ray: A distributed framework for emerging AI
+applications,” in 13th USENIX Symposium on Operating Systems Design
+and Implementation (OSDI 18) , 2018, pp. 561–577.
+[19] “OpenAI,” https://openai.com/about/, accessed: 2021-11-04.
+[20] “OpenAI’s MADDPG Implementation,” https://github.com/openai/
+maddpg, accessed: 2021-11-03.
+[21] R. Lowe, Y . Wu, A. Tamar, J. Harb, P. Abbeel, and I. Mordatch,
+“Multi-agent actor-critic for mixed cooperative-competitive environ-
+ments,” arXiv preprint arXiv:1706.02275 , 2017.
+[22] A. Rafﬁn, A. Hill, M. Ernestus, A. Gleave, A. Kanervisto, and N. Dor-
+mann, “Stable baselines3,” https://github.com/hill-a/stable-baselines,
+2019, accessed: 2021-11-02.
+[23] Electric Power Research Institute (EPRI), “OpenDSS: EPRI distribution
+system simulator,” https://sourceforge.net/projects/electricdss/, accessed:
+2021-11-04.
+[24] V . Mnih et al., “Human-level control through deep reinforcement learn-
+ing,” Nature, vol. 518, no. 7540, pp. 529–533, 2015.
+[25] J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov, “Prox-
+imal policy optimization algorithms,” arXiv preprint arXiv:1707.06347,
+2017.

@@ -1,0 +1,82 @@
+{
+  "scope": "embodied intelligence for power-grid control: simulator-grounded perception, planning, validated actuation, feedback and safety",
+  "retrieved_at": "2026-08-27",
+  "sources": [
+    {
+      "id": "powergym-2022",
+      "title": "PowerGym: A Reinforcement Learning Environment for Volt-Var Control in Power Distribution Systems",
+      "kind": "benchmark-paper-and-code",
+      "url": "https://arxiv.org/abs/2109.03970",
+      "pdf_url": "https://arxiv.org/pdf/2109.03970",
+      "code_url": "https://github.com/siemens/powergym",
+      "status": "downloaded_verified"
+    },
+    {
+      "id": "grid2op-2020",
+      "title": "Grid2Op: A testbed platform to model sequential decision making in power systems",
+      "kind": "simulator-and-code",
+      "url": "https://github.com/Grid2op/grid2op",
+      "code_url": "https://github.com/Grid2op/grid2op",
+      "status": "metadata_ready_download_pending"
+    },
+    {
+      "id": "powergridworld-2022",
+      "title": "PowerGridworld: A Framework for Multi-Agent Reinforcement Learning in Power Systems",
+      "kind": "benchmark-paper-and-code",
+      "url": "https://arxiv.org/abs/2111.05969",
+      "pdf_url": "https://arxiv.org/pdf/2111.05969",
+      "alternative_pdf_url": "https://www.nrel.gov/docs/fy22osti/81401.pdf",
+      "code_url": "https://github.com/NatLabRockies/PowerGridworld",
+      "status": "downloaded_verified"
+    },
+    {
+      "id": "gym-anm-2021",
+      "title": "Gym-ANM: Reinforcement Learning Environments for Active Network Management Tasks in Electricity Distribution Systems",
+      "kind": "benchmark-paper-and-code",
+      "url": "https://arxiv.org/abs/2103.07932",
+      "pdf_url": "https://arxiv.org/pdf/2103.07932",
+      "code_url": "https://github.com/robinhenry/gym-anm",
+      "status": "downloaded_verified"
+    },
+    {
+      "id": "commonpower-2024",
+      "title": "CommonPower: A Framework for Safe Data-Driven Smart Grid Control",
+      "kind": "safe-control-framework",
+      "url": "https://arxiv.org/abs/2406.03231",
+      "pdf_url": "https://arxiv.org/pdf/2406.03231",
+      "code_url": "https://github.com/TUMcps/commonpower",
+      "status": "downloaded_verified"
+    },
+    {
+      "id": "safe-rl-review-2024",
+      "title": "Safe Reinforcement Learning for Power System Control: A Review",
+      "kind": "survey",
+      "url": "https://arxiv.org/abs/2407.00681",
+      "pdf_url": "https://arxiv.org/pdf/2407.00681",
+      "status": "metadata_ready_download_pending"
+    },
+    {
+      "id": "foundation-models-2023",
+      "title": "Large Foundation Models for Power Systems",
+      "kind": "foundation-model-study",
+      "url": "https://arxiv.org/abs/2312.07044",
+      "pdf_url": "https://arxiv.org/pdf/2312.07044",
+      "status": "metadata_ready_download_pending"
+    },
+    {
+      "id": "x-gridagent-2025",
+      "title": "X-GridAgent: An LLM-Powered Agentic AI System for Assisting Power Grid Analysis",
+      "kind": "agentic-analysis-system",
+      "url": "https://arxiv.org/abs/2512.20789",
+      "pdf_url": "https://arxiv.org/pdf/2512.20789",
+      "status": "metadata_ready_download_pending"
+    },
+    {
+      "id": "embodied-industrial-control-2026",
+      "title": "Embodied-Intelligence Power Industrial Control Systems: Architecture Design, Key Scientific Problems, and Research Recommendations",
+      "kind": "position-paper",
+      "url": "https://doi.org/10.1109/JAS.2026.125846",
+      "status": "metadata_ready_download_pending"
+    }
+  ]
+}

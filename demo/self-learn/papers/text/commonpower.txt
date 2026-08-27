@@ -1,0 +1,1495 @@
+
+
+===== PAGE 1 =====
+
+CommonPower: A Framework for Safe
+Data-Driven Smart Grid Control
+Michael Eichelbeck, Hannah Markgraf, and Matthias Althoff
+Abstract—The growing complexity of power system manage-
+ment has led to an increased interest in reinforcement learning
+(RL). To validate their effectiveness, RL algorithms have to
+be evaluated across multiple case studies. Case study design is
+an arduous task requiring the consideration of many aspects,
+among them the influence of available forecasts and the level of
+decentralization in the control structure. Furthermore, vanilla RL
+controllers cannot themselves ensure the satisfaction of system
+constraints, which makes devising a safeguarding mechanism a
+necessary task for every case study before deploying the system.
+To address these shortcomings, we introduce the Python tool
+CommonPower, the first general framework for the modeling
+and simulation of power system management tailored towards
+machine learning. Its modular architecture enables users to focus
+on specific elements without having to implement a simulation
+environment. Another unique contribution of CommonPower is
+the automatic synthesis of model predictive controllers and safe-
+guards. Beyond offering a unified interface for single-agent RL,
+multi-agent RL, and optimal control, CommonPower includes a
+training pipeline for machine-learning-based forecasters as well
+as a flexible mechanism for incorporating feedback of safeguards
+into the learning updates of RL controllers.
+Index Terms—Safe reinforcement learning, energy manage-
+ment, model predictive control, multi-agent systems, and forecast
+uncertainties.
+I. INTRODUCTION
+I
+NCREASING adoption of intermittent renewable energy
+generation and complex power demand patterns, e.g., from
+electrifying heating and mobility, challenge power system con-
+trol. Reinforcement learning (RL) has emerged as a promising
+method as it does not require explicit model knowledge
+and can automatically adapt to changing parameters. RL
+controllers have successfully been demonstrated for V olt-
+Var control, frequency control, economic dispatch, and smart
+home energy management [1]. Additionally, distributed control
+based on multi-agent reinforcement learning (MARL) provides
+a versatile data-driven approach largely using local information
+[2]–[4].
+RL controllers have demonstrated competitive performance
+compared to model predictive controllers (MPC) at signifi-
+cantly lower computational costs [5]. Furthermore, there is
+evidence that RL controllers can learn the implicit patterns
+of disturbances and thus outperform a nominal MPC in a
+setting with inaccurate forecasts [6]. For all its promise,
+This work was partially supported by the German Research Foundation
+(grant no. 458030766) and the Bavarian Research Foundation project STROM
+(Energy - Sector coupling and microgrids, AZ-1473-20). The authors are with
+the School of Computation, Information and Technology, Technical University
+of Munich, Germany.
+E-mail:michael.eichelbeck@tum.de
+integrating RL controllers into smart grids faces a major
+challenge since vanilla RL cannot guarantee the satisfaction
+of system constraints.
+Safe RL is an active area of research with a large amount of
+existing literature [7]–[10]. While there exist many algorithms
+that satisfy constraints with high probability, the critical nature
+of power systems renders guaranteed constraint satisfaction
+a strict requirement for the real-world deployment of RL
+controllers. Such mechanisms are generally hand-crafted for
+individual case studies [11]–[14], which is a tedious task for
+practitioners and can be prohibitively hard for non-experts.
+Further, it does not allow for a general approach for passing
+feedback from the safety mechanism to the RL agent, which
+has been shown to influence control performance [15], [16]. A
+more generic approach is to establish safety guarantees based
+on simplified system models that enclose all possible behaviors
+considering parametric uncertainties and disturbances [15].
+Beyond the study of safeguarding mechanisms, there are
+two further aspects of smart grid control that are becoming
+increasingly relevant and motivate further research. Firstly,
+the adoption of local energy communities, virtual power
+plants, and supply/demand aggregators results in more and
+more distributed control settings combining different types
+of controllers [17], [18]. Secondly, data-driven models are
+becoming the standard forecasting approach as they show
+significant promise to improve forecast accuracy and thus
+control performance [19]–[22]. Before presenting how our
+tool addresses these challenges in Section I-B, we provide
+an overview of existing Python libraries for modeling power
+systems and interfacing RL agents.
+A. Related Work
+Andes gym[23] provides one single-agent RL environment
+for frequency and voltage control. It is based on theANDESli-
+brary [24], which features a symbolic modeling framework and
+optimized numerical simulations.Gym-ANM[25], [26] targets
+economic dispatch use cases and notably includes an MPC
+as a baseline, which is, however, limited to the pre-defined
+device models.Grid2op[27], [28] presents a framework for
+power grid management in which agents can control both the
+grid topology and power dispatch. Furthermore, it can model
+opponents that attempt to destabilize the system.PowerGym
+[29] is a library designed for V olt-Var control in distribution
+networks and utilizes the Python version of OpenDSS for solv-
+ing provided system constraints. The toolpython-microgrid
+[30] is a lightweight framework for economic dispatch in
+microgrids.RLGC[31] is a library tailored for emergency
+arXiv:2406.03231v5  [eess.SY]  29 Sep 2025
+
+
+===== PAGE 2 =====
+
+control, e.g., generator dynamic braking or under-voltage load
+shedding using the Java tool InterPSS for simulation. Lastly,
+SustainGym[32] is a collection of benchmarks for single-
+agent and multi-agent control covering five distinct energy
+management use cases.
+Toolboxes for MARL exist mainly for home energy man-
+agement and economic dispatch applications.CityLearn[2],
+[33] provides both benchmark environments and baseline im-
+plementations for demand response of buildings using single-
+agent and multi-agent RL. This framework is extended by
+a power grid model inGridLearn[3] so that tasks, such as
+voltage regulation, can be addressed. Both libraries focus on
+decentralized control of active storage components, such as
+thermal energy storage or batteries, and rely on pre-simulated
+heating and cooling demands.PowerGridWorld[4] provides
+a modular framework for modeling multi-agent scenarios,
+relying on OpenDSS for solving power flow.
+All existing tools share the key limitation that they do
+not maintain a symbolic system model that can readily be
+exposed to controllers or safeguards. This disconnect requires
+users to implement model-based safeguarding or model-based
+control specifically for each case study, which becomes a very
+laborious task for large or heterogeneous systems. Device-
+level safety mechanisms are hard-coded and cannot readily
+provide feedback to controllers. All tools either rely on a
+set of built-in, specifically structured components or external
+simulation tools that require complex tabular configuration
+files, limiting flexibility and ease of use. Further, existing
+tools cannot simulate different types of controllers, such as
+RL-based, rule-based, or model-based, in the same system.
+This limits the possibility of modeling complex distributed
+control structures. Lastly, of all investigated tools, only python-
+microgrid provides a generic forecaster interface, and none
+includes functionality for developing machine-learning-based
+forecasters. This makes it cumbersome to study the influence
+of forecaster accuracy and requires external tool support for
+the training of machine-learning-based forecasters.
+B. Contributions
+Our Python library CommonPower 1 closes the aforemen-
+tioned gaps and addresses the need for a versatile tool facilitat-
+ing the exploration of safe controllers in a large variety of use
+cases. As such, it provides acommonground for researchers
+and practitioners in the area of data-driven smart grid control.
+CommonPower contains the following main features:
+•Modular architecture: CommonPower has a highly
+modular approach in which power system entities, con-
+trollers, safeguards, forecasters, and data sources are
+abstracted as objects with clearly defined interfaces.
+•Flexible component modeling: As a framework, Com-
+monPower facilitates the modeling of arbitrary scenarios.
+The built-in models of buses, devices, or power flow can
+easily be extended, or entirely custom components can be
+implemented, and their symbolic model is automatically
+considered. CommonPower integrates several modeling
+1https://github.com/TUMcps/commonpower
+utilities, e.g., for piece-wise continuous models, and sup-
+ports the integration of external tools to simulate complex
+dynamics of individual devices.
+•Adaptive RL safeguarding: Since CommonPower main-
+tains a symbolic representation of the system under
+study, model-based safeguarding approaches for RL can
+be derived automatically. The built-in implementation is
+based on a robust optimal control formulation of the
+system constraints and considers model uncertainties as
+well as disturbances.
+•Built-in robust MPC: CommonPower utilizes its sym-
+bolic representation to automatically synthesize a robust
+model predictive controller that can serve, e.g., as a
+credible baseline or as a basis for imitation learning.
+•Unified RL interface: CommonPower implements a
+unified gymnasium environment [34] for single-agent and
+multi-agent RL. This facilitates the comparison of both
+paradigms and makes it possible to directly integrate any
+algorithm or library supporting the gymnasium interface.
+•Heterogeneous distributed control structures: Due to
+the modular design of CommonPower, different types
+of controllers can be combined in the same multi-agent
+system. Based on a highly flexible problem formulation,
+any controller can be mapped to an arbitrary number of
+controllable entities.
+•Data-driven forecasting: Beyond providing a generic
+forecaster interface, CommonPower implements a frame-
+work for training, evaluating, and tuning machine-
+learning-based prediction models.
+•Integration and documentation: To facilitate integration
+into ongoing projects, a power grid import interface to the
+well-known librarypandapower[35] is provided. Fur-
+thermore, CommonPower implements an interface to the
+libraryPyTupli[36], a toolbox for managing experience
+tuples for offline and continual learning. The code base is
+well documented and includes several tutorials to support
+user on-boarding 2.
+C. Organization
+After introducing some notation and background (Sec. II),
+we formulate our high-level control problem and establish
+its corresponding RL environment (Sec. III). Afterward, we
+describe how power systems and forecasters are modeled in
+CommonPower (Sec. IV), followed by presenting our unified
+approaches to control and safeguarding (Sec. V). Finally, we
+investigate several case studies (Sec. VI) and conclude (Sec.
+VII).
+II. PRELIMINARIES
+The primary application areas of CommonPower are smart
+home energy management, demand response, and economic
+dispatch in modern microgrids, which we model as discrete-
+time receding-horizon optimal control problems. We consider
+our system to have a set of busesN, a state vectorx∈ X,
+2https://commonpower.readthedocs.io/en/latest/
+
+
+===== PAGE 3 =====
+
+RL agent 1MPC
+Utility grid
+Supercomputing
+center
+Large-scale
+storage
+Buildings
+STAGE 2
+STAGE 1
+RL agent 2
+(a) Two-stage control with balancing assets operated by an MPC and two
+different coalitions controlled by multi-agent RL.
+RL agent 1
+Utility grid
+Supercomputing
+center
+Large-scale
+storage
+BuildingsSTAGE 1
+(b) Centralized control using RL.
+Fig. 1. Microgrid of a university campus with several prosumers and different control architectures that can be realized using CommonPower.
+an input vectoru∈ U, and a disturbance vectorw∈ W, to
+formulate dynamic and algebraic constraints:
+∀i∈N,∀t:x i
+t+1 =f i(xi
+t,ui
+t,wi
+t)(1a)
+0≤g i(xi
+[·],ui
+[·],wi
+[·])(1b)
+0≤d(x t,ut,wt)(1c)
+wt∈W t = [wt,wt]⊆ W,(1d)
+where[·]denotes a trajectory and the superscriptiindicates
+association with busi∈N. We assume access to forecasts
+ˆwt ∈ Wt of disturbances, where the disturbance set is
+obtained by conformance checking [37]. The constraints in
+(1b) typically represent charging or total energy requirements
+of electric vehicles or flexible loads, which couple multiple
+time steps and, therefore, consider trajectories. Power flow
+constraints between buses are contained in (1c).
+Generally, the system (1) is not exactly known, which is one
+core motivation for using RL. To facilitate optimal control and
+model-based safeguarding, we assume that a system model
+˜f(·),˜g(·)is available. For optimal control, there are no
+restrictions on the model complexity, as long as it can be
+expressed within the symbolic modeling framework Pyomo
+[38], [39] (see Sec. IV). For providing formal guarantees via
+our safeguarding approach, we assume that the model ˜f(·),
+˜g(·)is obtained via reachset-conformant identification [40]–
+[42] to ensure thatx t∈X t always holds, where
+Xi
+t+1 = ˜fi(Xi
+t,ui
+t,Wi
+t) =n
+˜fi(xi
+t,ui
+t,wi
+t)
+∃xi
+t∈X i
+t,∃wi
+t∈W i
+t
+o
+. (2)
+For the sake of computational efficiency, CommonPower cur-
+rently guarantees this containment condition only if ˜fi(·)and
+˜gi(·)are input-switched piece-wise continuous functions with
+piece-wise sign-stable Jacobian. This is further explained in
+Sec. V-C. To guarantee safety beyond the control horizon, we
+pose the condition that we can always find an input that steers
+the system into a robust control invariant set [43].
+III. PROBLEMSTATEMENT
+We consider complex distributed control structures that
+are becoming increasingly relevant as local generation and
+energy storage assets enable prosumer-level optimization. As a
+motivating example, we introduce an urban university campus
+microgrid in Fig. 1. It contains a supercomputing center
+run by an independent organization, several buildings of the
+university, and a large-scale battery storage unit.
+In our problem statement, the set of all prosumersP⊆N
+represents individual stakeholders, while a set of balancing
+assetsA=N\Prepresents assets that can be utilized by the
+grid operator to establish grid stability. Prosumers can form
+disjoint coalitionsG k⊆P, TGk =∅, SGk =Pin which
+members can exchange information, are each controlled by a
+controller, and are, in a multi-agent setup, mapped to an agent.
+Fig. 1a illustrates the high degree of flexibility that can
+be achieved with this formulation. Here, all buildings and
+the supercomputing center are prosumers and the storage
+unit is considered a balancing asset. The three university
+buildings form the first coalition, and the supercomputing
+center forms the second coalition, both controlled by one RL
+agent, respectively. In this most general setup, the control input
+for each time step is computed in two stages. In the first
+stage, all coalitions independently determine their inputs by
+solving a robust optimal control problem. Since the coalitions
+do not consider power flow constraints, the grid operator
+dispatches their balancing assets in the second stage. The
+imbalance mechanism incurs a cost that can be redistributed
+to the coalitions in some user-defined way. In this work, we
+refer tocentralized controlfor the special case in which there
+is one coalitionG=P=Nwith a single controller and no
+balancing assets. This results in a single-stage problem, which
+is illustrated in Fig. 1b.
+For the subsequent formalization, let us introduce the nom-
+inal trajectory of statesˆx [·] under the predicted disturbance
+trajectoryˆw[·]. In every time step and with a control horizon
+
+
+===== PAGE 4 =====
+
+T, the two-stage dispatch problem is formalized as follows:
+Stage 1min
+uk
+[·]
+TX
+t=0
+Jk(uk
+t,X k
+t ,Wk
+t )(3a)
+s.t.
+∀i∈G k∈G,∀t∈[0,T]X i
+t+1 = ˜fi(Xi
+t,ui
+t,Wi
+t)(3b)
+0≤˜gi(Xi
+[·],ui
+[·],Wi
+[·])
+Stage 2min
+uA
+[·]
+TX
+t=0
+JA(uA
+t ,XA
+t ,WA
+t )(3c)
+s.t.
+∀i∈A,∀t∈[0,T]X i
+t+1 = ˜fi(Xi
+t,ui
+t,Wi
+t)(3d)
+0≤˜gi(Xi
+[·],ui
+[·],Wi
+[·])
+0≤d(ˆxt,uA
+t ,ˆwt).
+After each time step, the system evolves according to (1)
+andX (·)
+0 ={x (·)
+0 }is a measurement of the current system
+state. Note that we only enforce the power flow constraints on
+the nominal system trajectory for the sake of computational
+efficiency. Our formulation can be extended to arbitrarily
+nonlinear functions and robust power flow feasibility by
+following the iterative approach from [44]. Here, we would
+compute nominal optimal trajectories with gradually tighten-
+ing constraints, which are verified under disturbance using
+reachability analysis based on conservative linearization [45],
+[46].
+The problem statement can be considered to be a sequential
+decision-making process under uncertainty. RL is the standard
+machine learning approach for solving such problems. Decen-
+tral control of a system with multiple agents can be realized
+using multi-agent reinforcement learning (MARL). In MARL,
+the underlying control problem is commonly modeled as a
+partially observable Markov game (POMG). It is defined as a
+tuple(L,S,(U ℓ,Oℓ,Rℓ)∀ℓ∈L,Φ,γ)[47, Sec. 3.1], where
+•L={1,...,L}is the set of agents,
+•S= [s ,¯s]is the global state space of the environment,
+•O ℓ = [oℓ,¯oℓ]is the observation space of an agent,
+•U ℓ = [uℓ,¯uℓ]is the action space of an agent,
+•R ℓ :O ℓ×U ℓ→Ris the agent-specific reward function,
+•Φ :S×U 1×...×U L×S→Ris the probability density
+function modeling state transitions, and
+•γ∈[0,1)is the discount factor used to weigh future
+rewards.
+We use the notation(U ℓ,Oℓ,Rℓ)∀ℓ∈L to refer to the tuple
+of individual quantities(U 1,...,U L,O 1,...,O L,R 1,...,R L).
+Single-agent RL control is a special case of the above POMG
+withL= 1, resulting in a Markov decision process (MDP).
+The actions of an RL agentℓcontrolling one coalitionG k
+areu ℓ
+t =u k
+t . The default configuration for observations is
+oℓ
+t = [x k
+t,wk
+t,ˆwk
+[t+1,...,H]], whereHis a forecast horizon
+that can be specified by the user. The default can be over-
+written for each agent individually, enabling observation of
+arbitrary model data of the controlled coalition as well as
+data from other coalitions. The global state of the POMG
+is the concatenation of all observationss t = [o 1
+t,...,o L
+t ],
+System
+Power Flow
+Node Bus
+Line Device
+1
+1
+1 0..*
+1
+0..*
+1
+0..*
+AssociationComposition Generalization
+Fig. 2. UML class diagram of power system entities.
+where duplicates can be removed if desired. Finally, the reward
+Rℓ
+t =−J k(uk
+t,xk
+t,wk
+t )is computed.
+IV. MODELING
+CommonPower comprises two domains: the object domain
+and the symbolic domain. The object domain makes it possible
+to conveniently compose power systems and provides inter-
+faces to external libraries or tools. In the symbolic domain,
+all power system entities have a symbolic representation. They
+specify the variables and constraints that constitute the system
+model corresponding to the problem formulation in (3). With
+this approach, object-oriented programming features, such as
+inheritance, can be leveraged while maintaining full symbolic
+expressiveness.
+The class diagram in Fig. 2 shows how case studies are
+composed in the object domain. A number of buses are
+assigned to the rootSystemobject, with eachBusbeing
+assigned an arbitrary number ofDevices, e.g., batteries,
+electric vehicles, gas turbines, etc. A singleton instance of
+PowerFlowrepresenting algebraic constraints between buses
+is assigned to the system object in conjunction with a number
+ofLinesconnecting the buses. Instances of buses and devices
+can define the system dynamicsf(·)as a simple Python
+function that is executed during simulation. This realizes
+the integration of external software, such as Simulink, and
+supports hardware-in-the-loop simulation.
+In the symbolic domain, users can define the overap-
+proximative system model ˜f(·). The symbolic modeling is
+implemented through the framework Pyomo [38], [39]. The
+reasoning behind choosing Pyomo over a more generic sym-
+bolic library is that the resulting models can readily be used
+in optimization problems. We would like to highlight that
+Pyomo can represent arbitrary nonlinear and mixed-integer
+constraints, which makes it possible to model complex dynam-
+ics and power flow. The only requirement is that an appropriate
+solver is chosen.
+After having modeled a scenario in the object domain, the
+system is represented by an object tree of entities, with every
+entity defining its individual symbolic model. Before running a
+simulation, CommonPower automatically aggregates this dis-
+tributed symbolic representation into a global symbolic model
+in the form of (3). To this end, the object tree is traversed, and
+all local symbolic models are added to a hierarchical model
+in which the original tree structure is maintained via Pyomo
+blocks, as outlined in Algorithm 1. This hierarchical structure
+can readily be used for optimization within Pyomo and defines
+
+
+===== PAGE 5 =====
+
+Algorithm 1Global Model Construction
+1:procedureGLOBALMODEL(system,horizon,tau)
+2:Set parameters (tau(sample time),horizon)
+3:Create empty global Pyomo modelM
+4:Create time index setM.t←{0,1,...,horizon/tau}
+5:foreach nodeiin system.nodesdo
+6:Set node idnidas (parent id.class prefix + index)
+7:Create Pyomo blockM.nid
+8:Add node variablesx i,u i,w i toM.nid
+9:∀t∈M.t:add constraints for ˜fi,˜gi
+10:▷see (1a), (1b) (replacingf i,g i with ˜fi,˜gi)
+11:foreach child node/devicecofido
+12:Recursively add child to model
+13:end for
+14:end for
+15:foreach linelin system.linesdo
+16:Set line idlidas (class prefix + random suffix)
+17:Create Pyomo blockM.lid
+18:end for
+19:Add power flow constraints toM ▷(1c)
+20:end procedure
+the scope of optimal controllers and safeguards in a decentral
+control scenario.
+For illustration, the model of a simple battery storage system
+is presented in Tab. I. Not all listed model elements need to be
+manually defined as CommonPower automatically generates
+them (see Sec. IV-A). When instantiating an entity object,
+the user must configure input and state limits. Furthermore,
+parameter values need to be passed to the instance.
+A. Modeling Utilities
+1) Parameter Initialization:CommonPower automatically
+creates parameters determining the initial values of all mod-
+eled state variables. To simulate different parameter val-
+ues or initial states, users can configure an instance of
+ParamInitializerinstead of some fixed value. Built-in
+initializers randomly sample values from a given range or loop
+through a given list of values on every environment reset.
+2) Piece-wise Expressions:Piece-wise expressions are of-
+ten useful in power system modeling, e.g., for the approxima-
+tion of battery dynamics with piece-wise linear functions [48].
+CommonPower models such expressions via mixed-integer
+constraints and provides a utility that largely automates the
+generation of corresponding auxiliary constraints based on the
+big-M method [49]. For example, the battery model in Tab. I
+represents the dynamic function
+soct+1 =η ssoct +
+(
+ηcpt ifp t≥0
+1
+ηdpt otherwise.
+This case distinction can be modeled via a binary indicator
+variableecthat takes the value one ifp t ≥0and zero
+otherwise. In CommonPower, this variable and correspond-
+ing constraints can be straightforwardly defined by invok-
+ing theMIPExpressionBuilderutility. The resulting
+constraints are listed as indicator constraints in Tab. I. The
+MIPExpressionBuildersupports the logical operations
+≥,>,and,or, andnot.
+3) Uncertainties:Users define the symbolic model for the
+nominal case. Any defined parameter can then be declared
+uncertain on entity instantiation. Inputs from data providers
+are assumed to be uncertain as long as the forecaster does
+not explicitly declare perfect foresight. In case forecasters
+do not implement a method for obtaining their uncertainty
+set, CommonPower assumes the smallest possible hyperbox
+enclosing the forecast and the true value.
+For example, consider the use case of simulating a battery
+with CommonPower using the model from Tab. I. Since,
+in reality, the charging efficiency depends on the state of
+charge and the temperature [50], one would conduct a system
+identification based on experimental data. Assume this has
+shown that the value of the charging efficiencyη c lies in the
+interval[0.90,0.99]for all relevant conditions. This paramet-
+ric uncertainty can be injected into the model from Tab. I
+by simply declaringη c as uncertain in the battery instance
+configuration. CommonPower automatically detects that the
+uncertainty affects the dynamics function and renders the state
+of charge uncertain. A more detailed account of how this is
+considered when solving the system is given in Sec. V-C.
+B. Built-in Entities
+CommonPower includes a range of built-in entities, such as
+an inflexible load, (curtailable) renewable generators, conven-
+tional generators (with rate constraints), energy storage sys-
+tems, electric vehicles, and a heat pump. Built-in buses mainly
+differ in their modeled cost function, such as maximizing self-
+sufficiency, minimizing energy cost, or minimizing energy cost
+in conjunction with carbon intensity. CommonPower provides
+linearized models that avoid integer variables for many core
+entities. Further, built-in buses can be used to represent ex-
+ternal grids or to aggregate nodes in an energy community
+that minimizes energy cost jointly for all members. The
+built-in power flow models represent active power balance,
+DC power flow constraints [51, Ch. 6.2.4], and linearized
+DistFlow [52]. Users can use the built-in dynamics model for
+simulation, implement custom dynamics, inject uncertainties
+into the existing models, or create entirely custom models.
+C. Forecasting
+CommonPower establishes a clear separation between data
+sources and forecasters and uses a flexible data provider inter-
+face. Each disturbance in the system model is required to be
+associated with an instance ofDataProviderthat, at each
+new time step, queries aDataSourcefor the current value
+and aForecasterfor predicted future values. A simplified
+UML class diagram of this structure is provided in Fig. 3.
+Built-in data sources are based on Pandas DataFrames [53],
+CSV files, or cyclically repeating lists of values. Forecasters
+return a prediction for the value of a variable for every time
+step within the control horizon while having access to past and
+present values of a set of features. Some baseline algorithms
+are built-in, such as perfect forecasts, forecasts with smoothed
+
+
+===== PAGE 6 =====
+
+TABLE I
+BATTERY MODEL.MIS A LARGE POSITIVE CONSTANT.
+description name type definition configuration constraint expression/domain
+active powerpinput manual limitsp∈R
+charging indicatorecstate manualec∈{0,1}
+costcoststate manualcost∈R
+state of chargesocstate manual limitssoc∈R +
+0
+initial socsoc init parameter automatic valuesoc init∈R +
+0
+cost of wearρparameter manual valueρ∈R +
+0
+charge efficiencyη c parameter manual valueη c∈[0,1]
+discharge efficiencyη d parameter manual valueη d∈[0,1]
+self-dischargeη s parameter manual valueη s∈[0,1]
+indicator constraint 1 constraint automatic∀t:p t≥−M(1−ec t)
+indicator constraint 2 constraint automatic∀t:p t <Mec t
+state initialization constraint automaticsoc 0 =socinit
+dynamics function constraint manual∀t∈[0,T−1] :soc t+1 =η ssoct +ηc(ect)pt + 1
+ηd (1−ec t)pt
+cost function constraint manual∀t:cost t =ρ(ect)pt−ρ(1−ec t)pt
+DataProvider
+data : DataSource
+forecaster : Forecaster
+frequency : timedelta
+horizon : timedelta
+observable_features : Optional[list[str]]
+get_date_range() -> list[datetime]
+get_variables() -> list[str]
+observation_bounds(time: datetime) -> dict[str , list[tuple[float]]]
+observe(time: datetime) -> dict[str , np.ndarray]
+DataSource
+frequency : timedelta
+get_date_range() -> list[datetime]
+get_limits() -> dict[str, tuple[float, float]]
+get_variables() -> list[str]
+Forecaster
+frequency : timedelta
+horizon : timedelta
+input_range : tuple[timedelta]
+look_back : timedelta
+data forecaster
+Fig. 3. UML class diagram of the data provider structure.
+random noise, or persistence forecasts based on values at
+certain times in the past.
+To facilitate the study of data-driven forecasting approaches,
+CommonPower implements a framework for training, evalu-
+ating, and tuning machine learning models utilizing the Ray
+Tune library [54]. To obtain a tuned forecasting model on
+a given data source, the user only needs to select one of
+the built-in models or provide a custom model implementing
+PyTorch’snn.Moduleinterface [55] with some parameters
+for the tuning pipeline. The built-in models are configurable
+standard implementations of a multilayer perceptron (MLP), a
+long short-term memory network (LSTM), and a transformer.
+The pipeline is highly modular and exposes, among others,
+interfaces for splitting train/test/evaluation sets, extracting data
+points from the time-series data, and feature/target transforma-
+tions. The local saving and loading of trained models, includ-
+stage 1
+controllers
+stage 1
+safeguards
+symbolic
+model
+solve (3b)
+observesimulate
+dynamics
+external
+simulators
+data and
+forecasters
+system
+model
+process flow
+information flow STAGE 1
+stage 2
+controller
+stage 2
+safeguard
+simulate
+dynamics
+solve (3d)
+t = t + 1
+STAGE 2
+COMMONPOWER
+CORE
+Fig. 4. Simplified visualization of one simulation step, highlighting the
+modularity in CommonPower.
+ing fitted transformations, is managed by CommonPower.
+V. CONTROL
+This section details how control and safeguarding are imple-
+mented in CommonPower. We outline the modular architecture
+and simulation flow, describe the unified interface for het-
+erogeneous controllers, and present our framework for robust
+safeguarding.
+A. High-Level Architecture and Simulation Flow
+The architecture of CommonPower is centered around a core
+module that interacts with the symbolic model and interfaces
+to all other modules, as visualized in Fig. 4. Users can define
+completely customized controllers and safeguards that can
+
+
+===== PAGE 7 =====
+
+make use of the symbolic model of their controlled entities.
+Furthermore, adapters to external simulation tools can be
+integrated into custom or pre-defined components to execute
+external models. The flexible interface for forecasters and data
+sources is described in Sec. IV-C. Overall, our architecture
+ensures that the symbolic model is consistently managed
+by the core module while providing maximum flexibility
+with regard to controllers, safeguards, system simulation, and
+forecasters.
+After the global symbolic model has been synthesized as
+described in Sec. IV, the system state is initialized as described
+in Sec. IV-A. Each simulation step starts with data sources
+and forecasters providing values for disturbances, which are
+updated in the symbolic model. Next, the controllers of stage 1
+(see Sec. III) are queried for their inputs, which are, if
+necessary, adjusted by safeguards. All unmodeled dynamics
+are executed in the ensuing step, possibly integrating external
+simulation tools. Afterwards, CommonPower solves (3b) for
+all free variables, i.e., algebraic variables, and states with
+dynamics that adhere to the symbolic model. This concludes
+stage 1. In stage 2, balancing assets are dispatched, following
+the same process as stage 1.
+B. Unified Control Approach
+To enable both the deployment and the training of single-
+agent and multi-agent systems with heterogeneous controllers,
+CommonPower offers one unified interface based on the
+gymnasium API [34], commonly referred to as anenvironment.
+Developing our own interface was necessary because no stan-
+dard environment representation has emerged for multi-agent
+RL thus far. We, therefore, have an internal environment repre-
+sentation and useWrapperclasses to adapt to representations
+used by the respective RL libraries, such as StableBaselines
+[56] or MAPPO [47]. Our interface realizes the interaction
+of any control algorithm with the underlying power system.
+If RL-based controllers are employed, the user can either
+directly deploy pre-trained policies or train the policies using
+CommonPower. To use other RL libraries than the above-
+specified, users can implement a customRunnerclass that
+handles configuration and instantiation of the training process.
+Fig. 5 visualizes how our interface handles heterogeneous
+control structures during training and deployment. It first sep-
+arates the controllers into RL-based and non-RL controllers.
+Before training starts, the external RL algorithm has to instan-
+tiate one policy for each RL controller. Our interface utilizes
+the system model to automatically extract the observation
+and action space for each controller. Please note that while
+CommonPower supports both discrete and continuous actions,
+the gymnasium API currently does not support hybrid action
+spaces. Once training starts, the RL algorithm samples actions
+from each policy. These can be corrected by the safeguard of
+the respective controller if required, as described in Sec. V-D.
+Our interface then collects the actions from all non-RL con-
+trollers. The rewards for the RL algorithm are computed for
+each agent based on the cost function of the controlled entities
+and the penalty incurred by the safeguarding, as described
+in Sec. V-D. Finally, observations are obtained by combining
+Gymnasium Environment
+Non-RL Controller
+Safe Actions
+simulate 
+system
+Observations
+Rewards
+RL Controller
+Safeguard
+Action
+Policy
+Penalty
+solve 
+(3b),(3d)
+observe
+Costs
+RL Algorithm
+Policy
+External CommonPower Training
+Deployment
+Fig. 5. Control flow during training and deployment in CommonPower.
+states and forecasts. Storing and loading the trained policies is
+handled automatically by CommonPower. During deployment,
+the same interface can be used to simulate the system with the
+RL-based and the non-RL controllers.
+C. Robustly Safe Control
+We follow an approach that establishes safety by directly in-
+cluding additional constraints in the control problem (3). While
+this is a computationally efficient strategy, it restricts ˜f(·)
+and˜g(·)to input-switched piece-wise continuous functions
+with piece-wise sign-stable Jacobian, as mentioned in Sec. II.
+This represents a special case of mixed-monotone functions,
+for which the reachable set from an uncertainty hypercube
+can be overapproximated by evaluating the function at two
+specific vertices of the uncertainty hypercube [57, Prop. 1],
+establishing a lower and an upper bound for the state trajectory.
+Note that this restriction is always fulfilled by any piece-wise
+linear function and by a large range of device models from
+the literature. For general non-linear models, approaches such
+as conservative linearization [45], [46] can be used to obtain
+overapproximative linear models.
+The uncertainty in the cost function is handled based on
+scenarios. To this end, we consider every vertex of the uncer-
+tainty hypercube of disturbances that are only present in the
+cost function in addition to the bounds of the state trajectory.
+Instances of the built-in classRobustCostinclude either
+the cost of the nominal scenario only, the worst-case scenario
+only, or a weighted average of all scenarios.
+D. RL Safeguarding Framework
+Through its modular architecture, CommonPower enables
+the integration of various safeguarding approaches, for exam-
+ple, using Lyapunov stability theory [11] or barrier functions
+[12]. However, leveraging our symbolic system representation
+makes it possible to automate the synthesis of safeguards that
+
+
+===== PAGE 8 =====
+
+are a generalized form of the predictive safety filter from [58].
+Specifically, the safeguards find a safe actionu ℓ
+t based on the
+proposed actiona ℓ
+t of RL agentℓby solving
+uℓ
+t = argmin
+uℓ
+t
+ϕ(uℓ
+t,aℓ
+t)
+s.t. (3b),
+(4)
+whereϕ(u ℓ
+t,aℓ
+t)is a cost function. Built-in classes of
+Safeguardimplement two common strategies. With
+ϕ(uℓ
+t,aℓ
+t) =∥u ℓ
+t−aℓ
+t∥2, the approach is commonly called ac-
+tion projection [59, Eq. (12)]. In contrast, withϕ(u ℓ
+t,aℓ
+t) = 0,
+we obtain random actions with the solver initialization as the
+source of randomness. This is an example of so-called action
+replacement [15, Sec. 2.1]. We refer the reader to the study in
+[15] for additional theoretical background and an experimental
+evaluation of different model-based safeguarding approaches.
+We make the standard assumption of well-posedness of our
+problem, implying the existence of safe actions. To relax this
+assumption, one could implement a custom safeguard with a
+fallback action such as load shedding. However, the question
+of whether we can always find safe actions in polynomial
+time is challenging, since there exists no method to do so for
+general nonlinear problems. For QPs with a convex objective
+function, as in the case of projection, we can only guarantee
+this if the constraints define a convex feasible set. This can
+be achieved by using linearized system dynamics as well as
+linear power flow models or convex inner approximations of
+the power flow feasible set [60], [61].
+When using safety filtering during RL training, the behavior
+policy used to gather data differs from the target policy
+that is being learned. Normally, a policy is updated based
+on a batch of tuples(o ℓ
+t,aℓ
+t,oℓ
+t+1,rℓ
+t). When a correction
+ofa ℓ
+t becomes necessary, this tuple could be changed to
+(oℓ
+t,uℓ
+t,oℓ
+t+1,rℓ
+t)which features the safe action and the reward
+obtained from applying this action. However, this would mean
+updating the policy with actions that do not stem from the most
+recent policy, which is an expected procedure for off-policy
+algorithms but can be problematic for on-policy algorithms
+[15]. Instead, we add an adaption penalty to the reward
+˜rℓ
+t =R ℓ(oℓ
+t,uℓ
+t,oℓ
+t+1) +Rℓ,pen(aℓ
+t,uℓ
+t)(5)
+such that the tuple used for learning is(o ℓ
+t,aℓ
+t,oℓ
+t+1,˜rℓ
+t).
+This penalty informs the agent about the intervention of the
+safeguard. CommonPower includes two built-in implementa-
+tions of thisSafetyPenalty; one represents the Euclidean
+distance between action and safe input, and the other is a
+configurable constant penalty if the action was adjusted.
+VI. EXPERIMENTS
+We present four experiments that demonstrate the capabili-
+ties and illustrate potential research directions that are enabled
+by the unique features of CommonPower and could not have
+been readily realized with any existing tool. All experiments
+were conducted on an Intel Core i9-14900K.
+0
+2
+4
+Power (kW)
+R-Nom
+R-Weight
+R-Worst
+Non-robust
+20
+20.5
+21
+T in (◦C)
+01-21 00:00 01-21 12:00 01-22 00:00 01-22 12:00 01-23 00:00
+−10
+−5
+0
+Time
+T out (◦C)
+Bounds
+Predicted
+Actual
+Fig. 6. Comparison of robust and non-robust model predictive control for a
+household featuring a heat pump and a battery storage system.
+A. Importance of Robust Safeguarding
+For the first two experiments, we study a building manage-
+ment task, where the goal is to control the power set points of a
+heat pump and a battery storage system so that the electricity
+cost of the building is minimized while the temperature is
+kept close to a chosen set point. Designing a safe controller
+for this task is challenging because of the inertia of the indoor
+temperature.
+The building has an inflexible active power consumption
+that always has to be satisfied, and a photovoltaic generator.
+We model the battery dynamics as in Tab. I withη s = 0and
+ηc =η d = 1.0. The dynamic equations for the heat pump are
+taken from [62]. As the ground truth data for the PV generation
+and active power consumption, we use the Simbench [63]
+dataset1-LV-rural2–1-sw 3. For the outdoor temperature and
+the coefficient of performance of the heat pump, we use the
+When2Heat dataset [64].
+We first show the necessity of utilizing the robust safe-
+guarding described in Sec. V-C. To this end, we simulate
+the above-described system for48hours with a time interval
+of one hour. We limit the indoor temperature to the interval
+T in ∈[20 ◦C,22◦C]with the target indoor temperature set
+to21◦C. The outdoor temperatureT out is predicted using the
+values from the previous day.
+Fig. 6 compares a naive optimal control approach to robust
+optimal control with the three different built-in cost functions:
+the nominal cost for the realized scenario, a weighted sum
+of all scenarios, and the cost for the worst-case scenario.
+Since the outdoor temperature is overestimated for a long
+period of time, the naive optimal controller is not able to
+keep the indoor temperature within the desired range, and
+the simulation fails after roughly 30 time steps. In contrast,
+all robust controllers can keep the system within the limits.
+The controller optimizing the worst-case cost results in the
+smallest deviation from the desired temperature set point. The
+overall cost is the highest when using the weighted sum of all
+scenarios (58.86) and lowest using the nominal cost (58.22).
+3https://simbench.de/de/datensaetze
+
+
+===== PAGE 9 =====
+
+0.2
+0.3
+0.4
+0.5
+Price ( €)
+20.98
+21
+T in (◦C)
+00:00 06:00 12:00 18:00 24:00
+2
+4
+6
+Time
+SoC (kWh)
+PPO
+IPPO
+MAPPO
+Fig. 7. Centralized (PPO) and decentralized control (IPPO, MAPPO) under
+time-of-use electricity prices for a household featuring a heat pump and a
+battery storage system.
+B. Comparison of Single- and Multi-agent RL
+The task described in Sec. VI-A can be solved using a
+centralized control structure – one controller for both heat
+pump and battery – or a decentralized one. Centralized control,
+realized with single-agent RL, has the advantage of having
+access to the full observation space. On the other hand, with
+multi-agent RL, the task of each individual agent is less
+complex. CommonPower enables an effortless comparison of
+both approaches for a given task.
+The system setup is very similar to the one described in Sec.
+VI-A. We relax the constraints for the indoor temperature such
+thatT in∈[18◦C,24◦C]. To reduce noise, we employ perfect
+forecasts for all quantities in this experiment. Finally, we use
+time-of-use electricity prices with the profile shown in Fig. 7.
+During single-agent RL training, we minimize the deviation
+of the indoor temperature from the set pointT set, the battery
+degradation, and the electricity cost, realized by
+rt =−(p grid
+t φt +c comfort(T in−T set)2 +c degrad|pbattery
+t |).
+Here,p grid is the power the household has to draw from
+the external grid,p battery is the charge/discharge power of
+the battery,φis the electricity price, andc comfort,c degrad
+are weighting factors for the comfort cost and the bat-
+tery degradation cost. The observation of the agent is
+ot =
+h
+soc,p PV
+[·],p load
+[·] ,T in,z hp,T out
+[·] ,φ [·]
+i
+, wherez hp represents
+the internal states of the heat pump andp PV,p load are the power
+of the PV array and the non-controllable load, respectively.
+For multi-agent RL, we split the electricity cost between the
+agent controlling the battery and the one controlling the heat
+pump, realized by
+rbattery
+t =−
+1
+2pgrid
+t φt +c degrad|pbattery
+t |
+
+,
+rheatpump
+t =−
+1
+2pgrid
+t φt +c comfort(T in−T set)2
+
+.
+This means that the reward for the individual agent is non-
+stationary as it also depends on the actions of the other agent.
+The agents receive
+obattery
+t =
+h
+soc,p PV
+[·],p load
+[·] ,T in,T out
+[·] ,φ [·]
+i
+,
+oheatpump
+t =
+h
+T in,z hp,T out
+[·] ,φ [·]
+i
+as observations, respectively.
+We compare the performance of PPO [65] as a single-agent
+RL algorithm with the two multi-agent algorithms IPPO [66]
+and MAPPO [47] on a given day. The difference between
+the two latter algorithms lies in the observation space of the
+critic used to guide the policy during training: In MAPPO,
+it is conditioned on the union of the individual observations
+as a means for alleviating non-stationarity. We compare safe
+training using action projection and a proportional penalty
+rℓ,pen
+t = 10∥a ℓ
+t−u ℓ
+t∥to safe training without a penalty
+to analyze how the penalty affects performance across the
+different algorithms. Furthermore, we report the results for
+training without a safeguard (unsafe). Here, we cannot employ
+proportional penalties as safe actions are not computed. There-
+fore, to inform the agent about constraint violations, we use
+a constant penaltyr ℓ,pen
+t =−50. Training is performed over
+data from one day with constant initial states of the battery and
+the heat pump to limit training times. During deployment, we
+perturb the initial state of the battery to achieve a different data
+distribution compared to training. For all algorithms, we first
+perform hyperparameter tuning over 100 trials for the batch
+size, the learning rate, and the initial standard deviation, and
+then use the best hyperparameters to train on five different
+random seeds.
+Tab. II shows that the agents trained with a projection
+safeguard and a proportional penalty consistently deliver the
+best average performance during deployment. MAPPO de-
+livers the best overall result, which can be attributed to the
+reduced complexity in the action space compared to PPO and
+the measures against non-stationarity explained above. Fig. 7
+shows the best-performing seed for each approach. We see that
+all learn to exploit low-level prices to charge the battery and
+pre-heat the building. Please note that unsafe training leads
+to failures during deployment for all algorithms, as shown
+in Tab. II, highlighting the necessity of using a safeguard.
+This also justifies the computational overhead incurred by the
+safeguarding, which constitutes13.5%of the training time on
+average.
+C. Effects of Forecaster Choice on Dispatch Cost
+The topology of our test system is based on theKerber
+Landnetz Kabel 2network taken from the pandapower library
+[35]. The network has 30 buses, 14 of which are households,
+and is connected to the external grid via a substation. The
+topology is imported from pandapower and all parameters are
+maintained, e.g., line admittances. We use the DC power flow
+model. During import, devices are added to households in a
+stochastic fashion. Each household has an inflexible load with
+a probability of 100%, a battery with a probability of 50%,
+and a photovoltaic generator with a probability of 50%. The
+
+
+===== PAGE 10 =====
+
+TABLE II
+COMPARISON OF SINGLE-AGENTRL (PPO)AND MULTI-AGENTRL (IPPO, MAPPO).
+PPO IPPO MAPPO
+Safe Safe-Pen Unsafe Safe Safe-Pen Unsafe Safe Safe-Pen Unsafe
+Training
+InterventionsMean15,238 2,751n.a.23,140 1,665n.a.24,862 1,664n.a.
+Safeguard timeMean14.3% 14.5%n.a.12.8% 13.3%n.a.13.0% 13.3%n.a.
+Deployment
+CostsMin9.21 8.59 9.36 8.77 8.20 8.99 8.81 8.24 9.03
+Max10.05 9.82 9.56 9.57 9.66 8.99 9.22 9.01 11.12
+Mean9.61 9.04 9.46 9.10 8.94 8.99 9.01 8.71 10.08
+Failed seeds- 0 0 3 0 0 4 0 0 3
+0 10 20 30 40 50 60 70 80 90 100
+0.05
+0.1
+0.15
+Trial
+RMSE
+Objective Value
+Best Value
+(a) LSTM architecture
+0 10 20 30 40 50 60 70 80 90 100
+0.171
+0.172
+0.173
+0.174
+Trial
+RMSE (b) Transformer architecture
+Fig. 8. Root mean squared error (RMSE) over the test data set of active power consumption for 100 hyperparameter trials.
+ground truth generation/load profiles are again based on the
+Simbench dataset1-LV-rural2–1-sw.
+We simulate the system described above with a centralized
+optimal controller over one year. The forecast horizon of the
+optimal controller is set to 12 hours with a frequency of one
+hour. We assume a constant buying (0.37 C/kWh) and selling
+(0.08 C/kWh) price.
+Our goal is to analyze the effect of forecast accuracy on
+the yearly electricity cost of the system. For simplicity, we
+choose perfect forecasts for the photovoltaic generation. The
+only uncertainty thus stems from the forecasts for the active
+power consumed by each household. They are provided by
+either a pre-trained LSTM model or a pre-trained transformer.
+We use CommonPower to first tune hyperparameters (batch
+size, dropout rate, number of layers, learning rate, lookback
+window) and then train the forecasting model with the identi-
+fied set of hyperparameters. The tuning is performed over 100
+trials with an 80-20 split for training and validation data. Fig. 8
+shows the spread of the root mean squared error used as the
+optimization objective during tuning. While the transformer
+architecture seems to be more robust, the LSTM delivers
+substantially better forecasting accuracy during training. How-
+ever, the controller using the LSTM forecasts obtains a higher
+yearly electricity cost (4220.51 C) than the one using the
+forecasts from the transformer (4206.23 C). Fig. 9 visualizes
+the error distributions of the two forecasters. We observe that
+the transformer-based forecaster always predicts very similar
+values over the forecast horizon, leading to overestimating
+the anticipated load in most cases. As a result, the controller
+has to be more conservative when allocating resources, which
+explains the improved closed-loop performance.
+D. Influence of Modeling Choices on Computation Time
+This experiment investigates the computation time of a
+centralized MPC with perfect forecasts across three different
+network sizes, two power flow models, and linear as well as
+piecewise-linear ESS models. The setup is identical to Sec.
+VI-C except that every household is assigned an inflexible
+load, photovoltaic generation, and a battery storage system.
+We simulate one day and average the computation time over
+all time steps. The results are listed in Tab. III.
+We can observe that under power balance constraints, the
+computation time scales approximately linearly with the net-
+work size. The use of a piecewise-linear ESS model increases
+the computation time by roughly 50%. Under LinDistFlow
+constraints, we obtain significantly higher computation times
+with the piecewise-linear ESS model. On a technical level,
+this is due to the fact that the presolve routine of the solver
+cannot eliminate as many variables as under power balance
+constraints, since they are more closely coupled. For refer-
+ence, the optimization problem for the largest network has
+24567 continuous variables, 1898 binary variables, and 1752
+quadratic objective terms. Please note that this is only an
+exemplary measurement and cannot be generalized, since the
+time to solve mixed integer programs depends strongly on the
+problem structure and several solver parameters.
+VII. CONCLUSION
+We introduce CommonPower, a comprehensive toolbox
+designed as a one-stop-shop solution for the modeling and
+simulation of safe controllers in smart grids. Leveraging
+a symbolic representation of the system, model-based RL
+safeguards as well as robust model predictive controllers are
+
+
+===== PAGE 11 =====
+
+2 4 6 8 10 12
+Forecast Horizon
+−0.25
+0.00
+0.25
+Error
+(a) LSTM architecture
+2 4 6 8 10 12
+Forecast Horizon
+−0.25
+0.00
+0.25
+Error (b) Transformer architecture
+Fig. 9. Error distribution during deployment between the true and the forecasted load for each time step in the forecast horizon. The results are averaged
+over all households.
+TABLE III
+SIMULATION TIME[S]PER TIME STEP.
+Buses/Households 30/14 116/57 294/146
+power balance + linear ESS 0.13 0.46 1.33
+power balance + piecewise-linear ESS 0.17 0.75 2.00
+LinDistFlow + linear ESS 0.17 0.75 2.17
+LinDistFlow + piecewise-linear ESS 3.63 5.58 12.38
+automatically derived, significantly accelerating case study
+design for practitioners. CommonPower features a flexible
+coalition-based approach, admitting the complex distributed
+control structures of modern and future smart grids. The
+modular software architecture exposes, among others, unified
+interfaces for single-agent and multi-agent RL algorithms,
+external simulation tools, data sources, and machine-learning-
+based forecasting models. Due to this high amount of flex-
+ibility, CommonPower can easily be integrated into existing
+projects, providing a common foundation for a vast variety of
+use cases and paving the way for increased real-world adoption
+of data-driven smart grid control. Planned extensions are the
+implementation of further entity models, hierarchical control,
+contingency constraints, further safeguarding approaches, and
+explicit modeling of energy trading.
+REFERENCES
+[1] X. Chen, G. Qu, Y . Tang, S. Low, and N. Li, “Reinforcement learning
+for selective key applications in power systems: Recent advances and
+future challenges,”IEEE Transactions on Smart Grid, vol. 13, no. 4,
+pp. 2935–2958, 2022.
+[2] J. R. V ´azquez-Canteli, J. K ¨ampf, G. Henze, and Z. Nagy, “CityLearn
+v1.0: An OpenAI gym environment for demand response with deep
+reinforcement learning,” inProceedings of the 6th ACM International
+Conference on Systems for Energy-Efficient Buildings, Cities, and Trans-
+portation, pp. 356–357, 2019.
+[3] A. Pigott, C. Crozier, K. Baker, and Z. Nagy, “GridLearn: Multiagent
+reinforcement learning for grid-aware building energy management,”
+Electric Power Systems Research, vol. 213, 2022. article no. 108521.
+[4] D. Biagioni, X. Zhang, D. Wald, D. Vaidhynathan, R. Chintala, J. King,
+and A. S. Zamzam, “PowerGridworld: A framework for multi-agent
+reinforcement learning in power systems,” inProceedings of the 13th
+ACM International Conference on Future Energy Systems, pp. 565–570,
+2022.
+[5] J. da Silva Andr ´e, E. Stai, O. Stanojev, and G. Hug, “Battery control with
+lookahead constraints in distribution grids using reinforcement learning,”
+Electric Power Systems Research, vol. 211, 2022. article no. 108551.
+[6] X. Zhang, A. T. Eseye, B. Knueven, and W. Jones, “Restoring distribu-
+tion system under renewable uncertainty using reinforcement learning,”
+inIEEE International Conference on Communications, Control, and
+Computing Technologies for Smart Grids, pp. 1–6, 2020.
+[7] J. Garc ´ıa, Fern, and o Fern ´andez, “A comprehensive survey on safe
+reinforcement learning,”Journal of Machine Learning Research, vol. 16,
+no. 42, pp. 1437–1480, 2015.
+[8] S. Gu, L. Yang, Y . Du, G. Chen, F. Walter, J. Wang, and A. Knoll, “A
+review of safe reinforcement learning: Methods, theories, and applica-
+tions,”IEEE Transactions on Pattern Analysis and Machine Intelligence,
+vol. 46, no. 12, pp. 11216–11235, 2024.
+[9] B. K ¨onighofer, R. Bloem, R. Ehlers, and C. Pek,Correct-by-
+Construction Runtime Enforcement in AI – A Survey, pp. 650–663.
+Springer Nature Switzerland, 2022.
+[10] V .-H. Bui, S. Mohammadi, S. Das, A. Hussain, G. V . Hollweg, and
+W. Su, “A critical review of safe reinforcement learning strategies
+in power and energy systems,”Engineering Applications of Artificial
+Intelligence, vol. 143, 2025. article no. 110091.
+[11] W. Cui, J. Li, and B. Zhang, “Decentralized safe reinforcement learning
+for inverter-based voltage control,”Electric Power Systems Research,
+vol. 211, 2022. article no. 108609.
+[12] T. L. Vu, S. Mukherjee, T. Yin, R. Huang, J. Tan, and Q. Huang, “Safe
+reinforcement learning for emergency load shedding of power systems,”
+in2021 IEEE Power & Energy Society General Meeting (PESGM),
+pp. 1–5, IEEE, 2021.
+[13] J. R. Vazquez-Canteli, G. Henze, and Z. Nagy, “MARLISA: Multi-
+agent reinforcement learning with iterative sequential action selection for
+load shaping of grid-interactive connected buildings,” inProceedings of
+the 7th ACM International Conference on Systems for Energy-Efficient
+Buildings, Cities, and Transportation, pp. 170–179, 2020.
+[14] S. Bahrami, Y . C. Chen, and V . W. Wong, “Deep reinforcement learning
+for demand response in distribution networks,”IEEE Transactions on
+Smart Grid, vol. 12, no. 2, pp. 1496–1506, 2020.
+[15] H. Krasowski, J. Thumm, M. M ¨uller, L. Sch ¨afer, X. Wang, and M. Al-
+thoff, “Provably safe reinforcement learning: Conceptual analysis, sur-
+vey, and benchmarking,”Transactions on Machine Learning Research,
+2023.
+[16] H. Markgraf and M. Althoff, “Safe multi-agent reinforcement learning
+for price-based demand response,” inIEEE PES Innovative Smart Grid
+Technologies Europe, pp. 1–6, 2023.
+[17] M. Uddin, H. Mo, D. Dong, S. Elsawah, J. Zhu, and J. M. Guerrero,
+“Microgrids: A review, outstanding issues and future trends,”Energy
+Strategy Reviews, vol. 49, 2023. article no. 101127.
+[18] F. S. Al-Ismail, “DC microgrid planning, operation, and control: A
+comprehensive review,”IEEE Access, vol. 9, pp. 36154–36172, 2021.
+[19] K. Amasyali and N. M. El-Gohary, “A review of data-driven building
+energy consumption prediction studies,”Renewable and Sustainable
+Energy Reviews, vol. 81, pp. 1192–1205, 2018.
+[20] A. M. Foley, P. G. Leahy, A. Marvuglia, and E. J. McKeogh, “Cur-
+rent methods and advances in forecasting of wind power generation,”
+Renewable Energy, vol. 37, no. 1, pp. 1–8, 2012.
+[21] Y . Wang, Q. Chen, T. Hong, and C. Kang, “Review of smart meter
+data analytics: Applications, methodologies, and challenges,”IEEE
+Transactions on Smart Grid, vol. 10, no. 3, pp. 3125–3148, 2019.
+[22] U. K. Das, K. S. Tey, M. Seyedmahmoudian, S. Mekhilef, M. Y . I.
+Idris, W. Van Deventer, B. Horan, and A. Stojcevski, “Forecasting
+of photovoltaic power generation and model optimization: A review,”
+Renewable and Sustainable Energy Reviews, vol. 81, pp. 912–928, 2018.
+[23] H. Cui and Y . Zhang, “Andes gym: A versatile environment for deep
+reinforcement learning in power systems,” inIEEE Power & Energy
+Society General Meeting, pp. 01–05, 2022.
+
+
+===== PAGE 12 =====
+
+[24] H. Cui, F. Li, and K. Tomsovic, “Hybrid symbolic-numeric framework
+for power system modeling and analysis,”IEEE Transactions on Power
+Systems, vol. 36, no. 2, pp. 1373–1384, 2020.
+[25] R. Henry and D. Ernst, “Gym-ANM: Open-source software to leverage
+reinforcement learning for power system management in research and
+education,”Software Impacts, vol. 9, 2021. article no. 100092.
+[26] R. Henry and D. Ernst, “Gym-ANM: Reinforcement learning environ-
+ments for active network management tasks in electricity distribution
+systems,”Energy and AI, vol. 5, 2021. article no. 100092.
+[27] A. Kelly, A. O’Sullivan, P. de Mars, and A. Marot, “Reinforce-
+ment learning for electricity network operation,”arXiv preprint
+arXiv:2003.07339, 2020.
+[28] A. Marot, B. Donnot, G. Dulac-Arnold, A. Kelly, A. O’Sullivan,
+J. Viebahn, M. Awad, I. Guyon, P. Panciatici, and C. Romero, “Learning
+to run a power network challenge: a retrospective analysis,” inPro-
+ceedings of the NeurIPS 2020 Competition and Demonstration Track,
+vol. 133 ofProceedings of Machine Learning Research, pp. 112–132,
+2021.
+[29] T.-H. Fan, X. Y . Lee, and Y . Wang, “PowerGym: A reinforcement
+learning environment for volt-var control in power distribution systems,”
+inProceedings of The 4th Annual Learning for Dynamics and Control
+Conference, vol. 168 ofProceedings of Machine Learning Research,
+pp. 21–33, 2022.
+[30] G. Henri, T. Levent, A. Halev, R. Alami, and P. Cordier, “pymgrid: An
+open-source python microgrid simulator for applied artificial intelligence
+research,” inNeurIPS Workshop on Tackling Climate Change with
+Machine Learning, 2020.
+[31] Q. Huang, R. Huang, W. Hao, J. Tan, R. Fan, and Z. Huang, “Adaptive
+power system emergency control using deep reinforcement learning,”
+IEEE Transactions on Smart Grid, vol. 11, no. 2, pp. 1171–1182, 2019.
+[32] C. Yeh, V . Li, R. Datta, J. Arroyo, N. Christianson, C. Zhang, Y . Chen,
+M. Hosseini, A. Golmohammadi, Y . Shi, Y . Yue, and A. Wierman, “Sus-
+tainGym: Reinforcement learning environments for sustainable energy
+systems,” in37th Conference on Neural Information Processing Systems
+Datasets and Benchmarks Track, 2023.
+[33] K. Nweye, K. Kaspar, G. Buscemi, T. Fonseca, G. Pinto, D. Ghose,
+S. Duddukuru, P. Pratapa, H. Li, J. Mohammadi, L. L. Ferreira,
+T. Hong, M. Ouf, A. Capozzoli, and Z. N. and, “CityLearn v2: energy-
+flexible, resilient, occupant-centric, and carbon-aware management of
+grid-interactive communities,”Journal of Building Performance Simu-
+lation, vol. 18, no. 1, pp. 17–38, 2025.
+[34] M. Towers, J. K. Terry, A. Kwiatkowski, J. U. Balis, G. d. Cola,
+T. Deleu, M. Goul ˜ao, A. Kallinteris, A. KG, M. Krimmel, R. Perez-
+Vicente, A. Pierr ´e, S. Schulhoff, J. J. Tai, A. T. J. Shen, and O. G.
+Younis, “Gymnasium.” https://doi.org/10.5281/zenodo.8269265, 2023.
+[35] L. Thurner, A. Scheidler, F. Sch ¨afer, J. Menke, J. Dollichon, F. Meier,
+S. Meinecke, and M. Braun, “pandapower — an open-source python tool
+for convenient modeling, analysis, and optimization of electric power
+systems,”IEEE Transactions on Power Systems, vol. 33, no. 6, pp. 6510–
+6521, 2018.
+[36] H. Markgraf, M. Eichelbeck, D. Cappey, S. Demirt ¨urk, Y . Schattschnei-
+der, and M. Althoff, “PyTupli: A scalable infrastructure for col-
+laborative offline reinforcement learning projects,”arXiv preprint
+arXiv:2505.16754, 2025.
+[37] H. Roehm, J. Oehlerking, M. Woehrle, and M. Althoff, “Model con-
+formance for cyber-physical systems: A survey,”ACM Transactions on
+Cyber-Physical Systems, vol. 3, no. 3, 2019. article no. 30.
+[38] W. E. Hart, J.-P. Watson, and D. L. Woodruff, “Pyomo: modeling and
+solving mathematical programs in python,”Mathematical Programming
+Computation, vol. 3, no. 3, pp. 219–260, 2011.
+[39] M. L. Bynum, G. A. Hackebeil, W. E. Hart, C. D. Laird, B. L. Nicholson,
+J. D. Siirola, J.-P. Watson, and D. L. Woodruff,Pyomo — Optimization
+Modeling in Python, vol. 67. Springer Science & Business Media,
+third ed., 2021.
+[40] S. B. Liu, B. Sch ¨urmann, and M. Althoff, “Guarantees for real robotic
+systems: Unifying formal controller synthesis and reachset-conformant
+identification,”IEEE Transactions on Robotics, vol. 39, no. 5, pp. 3776–
+3790, 2023.
+[41] F. Gruber and M. Althoff, “Scalable robust safety filter with unknown
+disturbance set,”IEEE Transactions on Automatic Control, vol. 68,
+no. 12, pp. 7756–7770, 2023.
+[42] L. L ¨utzow and M. Althoff, “Scalable reachset-conformant identification
+of linear systems,”IEEE Control Systems Letters, vol. 8, pp. 520–525,
+2024.
+[43] L. Sch ¨afer, F. Gruber, and M. Althoff, “Scalable computation of robust
+control invariant sets of nonlinear systems,”IEEE Transactions on
+Automatic Control, vol. 69, no. 2, pp. 755–770, 2024.
+[44] B. Sch ¨urmann, N. Kochdumper, and M. Althoff, “Reachset model
+predictive control for disturbed nonlinear systems,” inIEEE Conference
+on Decision and Control, pp. 3463–3470, 2018.
+[45] M. Althoff and B. H. Krogh, “Reachability analysis of nonlinear
+differential-algebraic systems,”IEEE Transactions on Automatic Con-
+trol, vol. 59, no. 2, pp. 371–383, 2014.
+[46] M. Althoff, O. Stursberg, and M. Buss, “Reachability analysis of nonlin-
+ear systems with uncertain parameters using conservative linearization,”
+in47th IEEE Conference on Decision and Control, pp. 4042–4048,
+2008.
+[47] C. Yu, A. Velu, E. Vinitsky, J. Gao, Y . Wang, A. Bayen, and Y . Wu,
+“The surprising effectiveness of PPO in cooperative, multi-agent games,”
+Advances in Neural Information Processing Systems, vol. 35, pp. 24611–
+24624, 2022.
+[48] H. Pand ˇzi´c and V . Bobanac, “An accurate charging model of battery
+energy storage,”IEEE Transactions on Power Systems, vol. 34, no. 2,
+pp. 1416–1426, 2018.
+[49] G. G. Brown and R. F. Dell, “Formulating integer linear programs: A
+rogues’ gallery,”INFORMS Transactions on Education, vol. 7, no. 2,
+pp. 153–159, 2007.
+[50] X. Su, B. Sun, J. Wang, H. Ruan, W. Zhang, and Y . Bao, “Experimental
+study on charging energy efficiency of lithium-ion battery under different
+charging stress,”Journal of Energy Storage, vol. 68, 2023. article no.
+107793.
+[51] P. Schavemaker and L. Van der Sluis,Electrical power system essentials.
+John Wiley & Sons, 2017.
+[52] M. Baran and F. Wu, “Optimal sizing of capacitors placed on a radial
+distribution system,”IEEE Transactions on Power Delivery, vol. 4, no. 1,
+pp. 735–743, 1989.
+[53] W. McKinney, “Data Structures for Statistical Computing in Python,”
+inProceedings of the 9th Python in Science Conference, pp. 56 – 61,
+2010.
+[54] R. Liaw, E. Liang, R. Nishihara, P. Moritz, J. E. Gonzalez, and I. Stoica,
+“Tune: A research platform for distributed model selection and training,”
+arXiv preprint arXiv:1807.05118, 2018.
+[55] A. Paszke, S. Gross, F. Massa, A. Lerer, J. Bradbury, G. Chanan,
+T. Killeen, Z. Lin, N. Gimelshein, L. Antiga,et al., “PyTorch: An
+imperative style, high-performance deep learning library,”Advances in
+Neural Information Processing Systems, vol. 32, 2019. article no. 721.
+[56] A. Raffin, A. Hill, A. Gleave, A. Kanervisto, M. Ernestus, and N. Dor-
+mann, “Stable-Baselines3: Reliable reinforcement learning implementa-
+tions,”Journal of Machine Learning Research, vol. 22, no. 268, pp. 1–8,
+2021.
+[57] S. Coogan and M. Arcak, “Efficient finite abstraction of mixed monotone
+systems,” inProceedings of the 18th International Conference on Hybrid
+Systems: Computation and Control, pp. 58–67, 2015.
+[58] K. P. Wabersich and M. N. Zeilinger, “A predictive safety filter for
+learning-based control of constrained nonlinear dynamical systems,”
+Automatica, vol. 129, 2021. article no. 109597.
+[59] S. Gros, M. Zanon, and A. Bemporad, “Safe reinforcement learning
+via projection on a safe set: How to achieve optimality?,”IFAC-
+PapersOnLine, vol. 53, no. 2, pp. 8076–8081, 2020.
+[60] D. Lee, H. D. Nguyen, K. Dvijotham, and K. Turitsyn, “Convex
+restriction of power flow feasibility sets,”IEEE Transactions on Control
+of Network Systems, vol. 6, no. 3, pp. 1235–1245, 2019.
+[61] D. Lee, K. Turitsyn, D. K. Molzahn, and L. A. Roald, “Robust AC
+optimal power flow with robust convex restriction,”IEEE Transactions
+on Power Systems, vol. 36, no. 6, pp. 4953–4966, 2021.
+[62] M. A. Bianchi,Adaptive modellbasierte pr ¨adiktive Regelung einer
+Kleinw¨armepumpenanlage. PhD thesis, Eidgen ¨ossische Technische
+Hochschule Z ¨urich, 2006.
+[63] S. Meinecke, D. Sarajli ´c, S. R. Drauz, A. Klettke, L.-P. Lauven,
+C. Rehtanz, A. Moser, and M. Braun, “SimBench — a benchmark
+dataset of electric power systems to compare innovative solutions based
+on power flow analysis,”Energies, vol. 13, no. 12, 2020. article no.
+3290.
+[64] O. Ruhnau, L. Hirth, and A. Praktiknjo, “Time series of heat demand
+and heat pump efficiency for energy system modeling,”Scientific data,
+vol. 6, no. 1, pp. 1–10, 2019.
+[65] J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov, “Prox-
+imal policy optimization algorithms,”arXiv preprint arXiv:1707.06347,
+2017.
+[66] C. S. de Witt, T. Gupta, D. Makoviichuk, V . Makoviychuk, P. H. S.
+Torr, M. Sun, and S. Whiteson, “Is independent learning all you need in
+the starcraft multi-agent challenge?,”arXiv preprint arXiv:2011.09533,
+2020.

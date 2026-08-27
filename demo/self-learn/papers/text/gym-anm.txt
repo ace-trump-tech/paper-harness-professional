@@ -1,0 +1,1905 @@
+
+
+===== PAGE 1 =====
+
+GYM-ANM: R EINFORCEMENT LEARNING
+ENVIRONMENTS FOR ACTIVE NETWORK MANAGEMENT
+TASKS IN ELECTRICITY DISTRIBUTION SYSTEMS
+A PREPRINT
+Robin Henry
+The University of Edinburgh
+robin@robinxhenry.com
+Damien Ernst
+The University of Li`ege
+dernst@uliege.be
+ABSTRACT
+Active network management (ANM) of electricity distribution networks include many
+complex stochastic sequential optimization problems. These problems need to be solved
+for integrating renewable energies and distributed storage into future electrical grids. In
+this work, we introduce Gym-ANM, a framework for designing reinforcement learning
+(RL) environments that model ANM tasks in electricity distribution networks. These
+environments provide new playgrounds for RL research in the management of electric-
+ity networks that do not require an extensive knowledge of the underlying dynamics
+of such systems. Along with this work, we are releasing an implementation of an in-
+troductory toy-environment, ANM6-Easy, designed to emphasize common challenges in
+ANM. We also show that state-of-the-art RL algorithms can already achieve good per-
+formance on ANM6-Easy when compared against a model predictive control (MPC) ap-
+proach. Finally, we provide guidelines to create new Gym-ANM environments differ-
+ing in terms of (a) the distribution network topology and parameters, (b) the observa-
+tion space, (c) the modelling of the stochastic processes present in the system, and (d) a
+set of hyperparameters inﬂuencing the reward signal. Gym-ANM can be downloaded at
+https://github.com/robinhenry/gym-anm.
+Keywords Gym-ANM· reinforcement learning· active network management· distribution networks·
+renewable energy
+1 Introduction
+Reinforcement learning (RL) is a vibrant ﬁeld of machine learning aiming to mimic the human learning
+process. This allows us to solve numerous complex decision-making problems [1]. In the ﬁeld of power
+systems (a term used to refer to the management of electricity networks), researchers and engineers have used
+RL techniques for many years [2]. Over the last few years, however, decision-making challenges in power
+systems have drawn less attention than other domains in which RL has been successfully and extensively
+applied, such as the ﬁelds of games [3, 4, 5, 6], robotics [7, 8, 9, 10], and autonomous driving [11, 12, 13].
+A plausible explanation for this is the lack of off-the-shelf simulators that model such problems. Indeed,
+despite its many recent breakthroughs, RL research remains largely dependent on the availability of artiﬁcial
+simulators that can be used as surrogates for the real world [14]. Training on real systems is often too slow
+and constraining, while simulators allow us to take advantage of large computational resources and do not
+constrain exploration.
+Developing efﬁcient and reliable algorithms to solve decision-making challenges in power systems is becom-
+ing more and more crucial for ensuring a smooth transition to sustainable energy systems. Power grids have
+experienced profound structural and operational changes over the last two decades [15]. The liberalization of
+electricity markets introduced a competitive aspect in their management, driving network improvements and
+cheaper energy generation [16]. The arrival of distributed generators, such as wind turbines and photovoltaic
+arXiv:2103.07932v2  [cs.LG]  30 Jun 2021
+
+
+===== PAGE 2 =====
+
+A PREPRINT - JULY 1, 2021
+panels (PVs), has compromised the traditional model of decentralized generation. In particular, we have seen
+the appearance of (virtual) microgrids creating local energy ecosystems in which consumers are now also
+producers [17]. In the near future, we can expect the addition of even more distributed generators to the grid
+[18], along with an increase in the number of large loads due to the fast electric vehicle market growth [19].
+Power grids are also facing the emergence of distributed energy storage (DES), with certain technologies
+already available, such as batteries [20] and power-to-gas [21]. As a result, system operators are facing many
+new complex decision-making problems (overvoltages, transmission line congestion, voltage coordination,
+investment issues, etc.), some of which might beneﬁt from advances in the very active area of RL research.
+Through this work, we seek to promote the application of RL techniques to active network management
+(ANM) problems, a class of sequential decision-making tasks in the management of electricity distribution
+networks (DNs). In the power system literature, ANM refers to the design of control schemes that modulate
+the generators, the loads, and/or the DES devices connected to the grid. This is done to avoid problems at
+the distribution level and maximize proﬁtability through, e.g., avoidable energy loss [22]. This modulation,
+operated by distribution network operators (DNOs), may result in a necessary reduction in the output of
+generators from what they could otherwise have produced given available resources, often referred to as the
+process of curtailment. Such generation curtailment, along with storage and transmission losses, constitute
+the principal sources of energy loss that we would like to minimize through ANM. At the same time, the ANM
+scheme must ensure a safe and reliable operation of the DN. This is often expressed as a set of operational
+constraints that must be satisﬁed.
+More speciﬁcally, we propose Gym-ANM, a framework that facilitates the design and the implementation
+of RL environments that model ANM tasks. Our goal was to release a tool that could be used without an
+extensive background in power system analysis. We thus engineered Gym-ANM so as to abstract away most
+of the complex dynamics of power system modelling. With its different customizable components, Gym-
+ANM is a suitable framework to model a wide range of ANM tasks, from simple ones that can be used for
+educational purposes, to complex ones designed to conduct advanced research. In addition, Gym-ANM is
+built on top of the OpenAI Gym toolkit [23], an interface with which a large part of the RL community
+is already familiar. Note that Gym-ANM environments do not solve ANM problems but, rather, provide a
+simple programming interface to test and compare various optimization and RL algorithms that aim to do so.
+The remainder of this paper is organized as follows. First, we introduce a series of background concepts
+and notations in RL, DNs, and MPC in Section 2. Section 3 then formalizes the generic ANM task that we
+consider as a partially observable Markov decision process (POMDP). Next, we propose a speciﬁc Gym-
+ANM environment that highlights common ANM challenges, ANM6-Easy, in Section 4. The performance
+of the state-of-the-art proximal policy optimization [24] (PPO) and soft actor-critic [25] (SAC) deep RL
+algorithms are evaluated on ANM6-Easy in Section 5. Finally, Section 6 concludes our work. To keep this
+paper accessible to a broad audience and to provide interested readers with a formal introduction to power
+system modelling, technical details about the inner working of the power grid simulator are gathered in
+Appendices A and B. Guidelines to design and implement new Gym-ANM environments are also provided
+in Appendices C and D, and more in-depth tutorials and documentation can be found on the project repository
+at https://github.com/robinhenry/gym-anm.
+2 Background
+2.1 Reinforcement Learning
+We consider the standard RL setting for continuing tasks where an agent interacts with an environmentE over
+an inﬁnite sequence of discrete timestepsT ={0, 1,... }, modelled as a Markov decision process (MDP). At
+each timestept, the agent selects an action at∈A based on a state st∈S according to a stochastic policy
+π :S×A→ [0, 1], such that at∼ π(·|st). After the action is applied, the agent transitions to a new state
+st+1∼p(·|st,at)∈S and receives the rewardrt =r(st,at,st+1)∈ R. The return from state st is deﬁned
+as Rt = limT→∞
+∑T−1
+i=t γi−trt, where γ∈ [0, 1) is the discount factor determining the weight of short-
+versus long-term rewards. We also distinguish a set of terminal statesSterminal⊂S . Given the distribution
+of initial statesp0(·) and the set of stationary policiesΠ, a policyπ∈ Π is considered optimal if it maximizes
+the expected return Jπ(s0) = Esi>0,ri≥0∼E,ai∼π[R0|s0] for all s0 that belong to the support of p0(·), and
+where rewards received after reaching a terminal state are always zero. In the context of problems with large
+and/or continuous state-action spaces, RL often focuses on learning a parameterized policy πφ ∈ Π with
+parametersφ whose expected returnJπφ(s0) is as close as possible to that of an optimal policy.
+2
+
+
+===== PAGE 3 =====
+
+A PREPRINT - JULY 1, 2021
+Figure 1: A Gym-ANM environment. At this speciﬁc time, the agent is curtailing both renewable energy
+resources and discharging the DES unit. Transmission line 1-3 is overheating with a power ﬂow of 104% of
+its capacity.
+In many cases, the environment may be partially observable so that the agent only has access to observations
+o∈O . The agent must thus adequately infer, directly or indirectly, an approximation of the statest from the
+history of observation-action-reward tuplesht = (o0,a 0,r 0...,a t−1,rt−1,ot). We designed the Gym-ANM
+framework so that it is straightforward for researchers to experiment with different degrees of observability
+in each environment.
+2.2 Distribution Networks
+An electricity distribution network can be represented as a directed graph G(N,E), where N =
+{0, 1,...,N −1} is a set of positive integers representing the buses (or nodes) in the network, andE⊆N×N
+is the set of directed edges linking buses together. The notationeij∈E refers to the directed edge with send-
+ing bus i and receiving bus j. Each bus might be connected to several electrical devices, which may inject
+into or withdraw power from the grid. The set of all devices is denoted byD ={0, 1,...,D − 1}, the set of
+all devices connected to bus i∈N byDi⊆D , and it is assumed that each device is connected to a single
+bus.
+Several variables (complex phasors) are associated with each bus i ∈ N: a bus voltage level Vi, a bus
+current injection Ii, an active (real) power injection P (bus)
+i , and a reactive power injection Q(bus)
+i . The
+bus power injections P (bus)
+i andQ(bus)
+i can also be obtained from P (bus)
+i = ∑
+d∈DiP (dev)
+d andQ(bus)
+i =∑
+d∈DiQ(dev)
+d , whereP (dev)
+d andQ(dev)
+d denote the active and reactive power injections from deviced∈D
+into the grid, respectively. The complex powers S(bus)
+i ,S (dev)
+d ∈ C injected into the network at bus i, or
+deviced, can then be obtained from the relation S(bus)
+i = P (bus)
+i + iQ(bus)
+i orS(dev)
+d = P (dev)
+d + iQ(dev)
+d .
+Similarly, variablesIij,Pij,Qij, andSij refer to the directed ﬂow of these quantities in branch eij∈E , as
+measured at bus i. Note that, as a result of transmission losses, power and current ﬂows may have different
+magnitudes at each end of the branch, e.g.|Pij|⁄ =|Pji|.
+2.3 Model Predictive Control (MPC) and Optimal Power Flow (OPF)
+In this work, we also present a model predictive control (MPC) approach to solving the ANM tasks that we
+propose with Gym-ANM. MPC in discrete-time settings is a control strategy in which, based on a known
+model of the dynamics of the system, a multi-stage optimization problem is solved at each timestep over a
+3
+
+
+===== PAGE 4 =====
+
+A PREPRINT - JULY 1, 2021
+ﬁnite time horizon. The solution found is applied to the system at the current timestep, and the process is
+repeated at the next one, indeﬁnitely [26]. The fact that a multi-stage optimization problem based on a model
+of the system is solved at each time step allows MPC to plan ahead and anticipate the system’s behavior. This
+leads to near-optimal performance as the optimization horizon is increased (assuming an accurate model of
+the system).
+The optimization problem solved by our MPC control algorithm is a multi-stage optimal power ﬂow (OPF)
+problem. Since its ﬁrst formulation by Carpentier in 1962 [27], solving a single instance or multiple instances
+of the OPF problem at regular time intervals has been the dominant approach to tackling decision-making
+problems in the management of power systems when network constraints are taken into account. In its
+most general form, the OPF problem is a non-convex constrained optimization problem with equality and
+inequality constraints. The objective function to minimize is often a representation of network operating
+costs, the equality constraints model the physical ﬂows of electricity, and the inequality constraints model
+operational constraints. There exist many different formulations of the OPF problem, each designed to solve
+a particular control task in power systems. Although many solution methods have been proposed using a
+wide range of optimization tools and techniques, no single formulation has been accepted as suitable for all
+forms of OPF problems and it remains an active area of research. For the interested reader, comprehensive
+surveys of such approaches can be found in [28, 29].
+3 Gym-ANM
+In this section, we propose Gym-ANM, a framework that can model a wide range of novel sequential
+decision-making ANM tasks to be solved by RL agents. Each Gym-ANM task is provided as a Gym [23] en-
+vironmentE that we describe by the MDP (S,A,O,p 0,p,r,γ )E. Our formalization of these MDPs follows
+closely, and was inspired by, the work of Gemine et al. in [30].
+For mathematical convenience, the set of electrical devices D connected to the grid is divided into three
+disjoint subsets DG,DL, and DDES , so that |DG| +|DL| +|DDES| = |D|. The set DG contains the
+generators,DL the loads, and DDES the DES units. Generators represent devices that only inject power
+into the grid, such as renewable energy resources (RER) DRER ⊂ DG or other traditional power plants
+DG−D RER. Loads group the passive devices that only withdraw power from the grid. Storage units, on
+the other hand, can both inject and withdraw power into/from the network. The only exception is the slack
+generatorgslack∈D G−DRER, assumed to be the only device connected to the slack bus. The slack bus
+is a special bus used to balance power ﬂows in the network and provide a voltage reference. The slack bus
+can also either inject or withdraw power into/from the network, such that the total generation remains equal
+to the total load plus transmission losses, at all times.
+3.1 Overview
+The structure of the Gym-ANM framework is illustrated in Figure 2, in which grey blocks represent compo-
+nents (functions) that are fully customizable by the user to design unique ANM tasks. At each timestept, the
+agent receives an observationot∈O and a rewardrt−1∈ R, based on which it then selects an actionat∈A
+to be applied in the environment.
+Once the environment has received the selected action at, it samples a series of internal variables using the
+next vars() generative process conditioned on the current statest∈S . These internal variables model the
+temporal stochastic evolution of the electricity demand and of the maximum renewable energy production
+before curtailment across the DN, as further described in later sections.
+The internal variables are then passed, along with at and st, to the main function next state(), which
+applies the action to the environment and outputs the new statest+1∈S . The next state() block behaves
+deterministically for a given DN. It ﬁrst maps the selected action at to the current available action space
+A(st)⊆A before applying it to the environment. All the currents, voltages, energy storage levels, and power
+ﬂows and injections are then updated, resulting in a new state st+1. Most of the power system modelling of
+the environment is handled by the next state() component, which we provide as a built-in part of the
+framework.
+The new statest+1 is then used to compute the new observationot+1∈O and rewardrt∈ R. Much like the
+next vars() block, the behavior of the observation() component can be freely designed by the designer
+of the environment. This way, it becomes straightforward to investigate the impact of different observation
+4
+
+
+===== PAGE 5 =====
+
+A PREPRINT - JULY 1, 2021
+Agent next_state()
+next_vars()
+observation()
+reward()
+Agent
+ENVIRONMENT
+Figure 2: The Gym-ANM framework.
+vectors on the performance of a given algorithm on a given ANM task. To simplify the use of our framework,
+we also provide a set of default common observation spaces that researchers can experiment with.
+Our framework provides a built-in reward() component that computes the rewardrt as:
+rt =clip(−rclip,−(∆Et:t+1 +λφ(st+1)),rclip), (1)
+where ∆Et:t+1 is the total energy loss during(t,t +1],φ(st+1) is a penalty term associated with the violation
+of operating constraints, λ is a weighting hyperparameter, and rclip > 0 keeps the rewards within a ﬁnite
+range [−rclip,rclip]. This reward function was designed to reﬂect the overall goal: learn a control policy π
+that ensures a secure operation of the DN while minimizing its operating costs. In the management of real-
+world DNs, there are many varied sources of operating costs. For simplicity, however, we consider energy
+losses and the violation of operational constraints to be the only sources of costs. Our reward formulation
+also assumes that the action is selected by the agent at timet, immediately applied in the environment at time
+t +ϵ, withϵ→ 0, and that all power injections remain constant during (t +ϵ,t + 1].
+The Gym-ANM framework allows for the creation of environments that model highly customizable ANM
+tasks. In particular, varying any of the following components will result in a different MDP, and therefore a
+different ANM task:
+1. Topology and characteristics of the DN. Its topology is described by the tuple (D,N,E) and its
+characteristics refer to the parameters of each of its deviced∈D , busi∈N , and transmission link
+eij ∈E . In particular, the number of devices |D| and their respective operating range will shape
+the resulting state spaceS and action spaceA. A detailed list of all the DN parameters modelled in
+Gym-ANM is provided in Appendix D.
+2. Stochastic processes. This corresponds to the design of the next vars() component in Figure 2.
+This component must model the temporal evolution of the electricity demand P (dev)
+l,t of each load
+l∈D L, the maximum productionP (max)
+g,t that each generatorg∈D G−{gslack} could produce at
+timet (before curtailment is applied ifg∈D RER), and a set ofK auxiliary variables{aux(k)
+t }K−1
+k=0 .
+3. Observation space. The observation spaceO can be changed to make the task more or less chal-
+lenging for the agent by modifying the observation() function.
+4. Hyperparameters. Although the reward() component is built-in as a part of the Gym-ANM
+framework, it nonetheless relies on three hyperparameters that can be chosen for each new task: the
+penalty weighting hyperparameter λ, the amount of time ∆t (in fraction of hour) elapsed between
+subsequent discretization timesteps, and the clipping hyperparameter rclip. Because we consider
+a policy to be optimal if it minimizes the expected sum of discounted costs, we also consider the
+discount factorγ∈ [0, 1) to be another ﬁxed hyperparameter part of the task description.
+In the remainder of this section, we explore the resulting MDP in more detail.
+5
+
+
+===== PAGE 6 =====
+
+A PREPRINT - JULY 1, 2021
+3.2 State Space
+At any timestep t, the state of a Gym-ANM environment is fully described by the state of the DN that it
+models. We represent this state using a set of state variables aggregated into a vectorst∈S :
+st =
+[
+{P (dev)
+d,t }d∈D,{Q(dev)
+d,t }d∈D,{SoCd,t}d∈DDES,{P (max)
+g,t }g∈DG−{gslack},{aux(k)
+t }K−1
+k=0
+]
+, (2)
+where
+• P (dev)
+d,t andQ(dev)
+d,t refer to the active and reactive power injections of device d∈D into the grid,
+respectively,
+• SoCd,t is the charge level, or state of charge (SoC), of DES unitd∈D DES ,
+• P (max)
+g,t is the maximum production that generatorg∈D G−{gslack} can produce,
+• aux(k)
+t is the value of the (k− 1)th auxiliary variable generated by the next vars() block during
+the transition from timestept to timestept + 1.
+In (2), the ﬁrst 2|D| +|DDES| variables (P (dev)
+0,t ,...,SoC |DDES|−1,t) can be used to compute any other
+electrical quantities of interest in the DN (i.e., currents, voltages, power ﬂows and injections, and energy
+storage levels), as derived in Appendix A. We also include the maximum generation variables P (max)
+g,t in
+st because, even though they do not affect the physical electric ﬂows in the network, they are required to
+compute the reward signal (see Section 3.6).
+These variables do not, however, provide any information about the temporal behavior of the system. Hence,
+they are not sufﬁcient to describe the full state of the system from a Markovian perspective. For instance, it
+may not be enough to know the active and reactive power injections from a load l∈D L at time t to fully
+describe the probability distribution of its next demandP (dev)
+l,t+1 .
+In order to makest Markovian, we chose to include a set of K auxiliary variables{aux(k)
+t }K−1
+k=0 that can be
+used to model other temporal factors that inﬂuence the outcomesP (dev)
+l,t+1 andP (max)
+g,t+1 during the next vars()
+call of Figure 2. This leads to state transitions that are only conditioned on the current state of the environment
+and on the action the agent selects, i.e.,st+1∼p(·|st,at). The overall task is thus indeed a MDP.
+For example, the environment ANM6-Easy that we introduce in Section 4 uses a single auxiliary variable
+that represents the time of the day. This is sufﬁcient to make st Markovian, since the underlying stochastic
+processes can all be expressed as a function of the time of day. Another example would be an environment
+in which the next demand of each load and the generation from each generator is solely dependent on their
+current value. In this case,st would not require any extra auxiliary variables. As environments become more
+and more complex, we expect state vectors to contain many auxiliary variables. Such examples could include
+solar irradiation and wind speed information to better represent the evolution of the electricity produced by
+renewable energy resources.
+Finally, the environment may also reach a terminal state st∈S terminal, indicating that no solution to the
+power ﬂow equations (see Appendix A.5) was found as a result of the action taken by the agent. This means
+that the power grid has collapsed and is often due to a voltage collapse problem [31].
+3.3 Action Space
+Given the current state of the environment st ∈ S, the available actions are denoted by the action space
+A(st). We deﬁne an action vectorat∈A (st) as:
+at =
+[
+{aPg,t}g∈DG−{gslack},{aQg,t}g∈DG−{gslack},{aPd,t}d∈DDES,{aQd,t}d∈DDES
+]
+, (3)
+for a total ofNa = 2|DG| + 2|DDES|− 2 control variables to be chosen by the agent at each timestep. Each
+control variable belongs to one of four categories:
+• aPg,t: an upper limit on the active power injection from generatorg∈D G−{gslack}. Ifg∈D DER,
+thenaPg,t is the curtailment value. For classical generators, it simply refers to a set-point chosen by
+the agent. The slack generator is excluded, since it is used to balance load and generation and, as a
+result, its power injection cannot be controlled by the agent. That is,gslack will inject the amount of
+power needed to ﬁll the gap between the total generation and demand into the network.
+6
+
+
+===== PAGE 7 =====
+
+A PREPRINT - JULY 1, 2021
+• aQg,t: the reactive power injection from each generator g∈D G−{gslack}. Again, the injection
+from the slack generator is used to balance reactive power ﬂows and cannot be controlled by the
+agent.
+• aPd,t: the active power injection from each DES unitd∈D DES .
+• aQd,t: the reactive power injection from each DES unitd∈D DES .
+The resulting action spaceA(st) is bounded by three sets of constraints. First, individual control variables in
+at∈A (st) are restricted to ﬁnite ranges[P,P ] or [Q,Q]. This is because electrical devices cannot physically
+inject (withdraw) inﬁnite active or reactive power into (from) the network. Second, generators and DES units
+may have additional constraints on their current injections, such as current limits of power converters. These
+constraints further restrict the range of (P,Q ) injection points that these devices can apply, i.e. they cannot
+simultaneously operate at full capacity for both active and reactive power. Third, the range of possible active
+power injection from each DES unit depends on its current storage level (provided inst). Indeed, empty (full)
+units cannot inject (withdraw) any power into (from) the network. Note that the ﬁrst two sets of constraints
+remain the same for allst∈S (see Appendix A.3).
+For simplicity, the agent is never given the precise boundaries of the action space A(st). Instead, we let it
+choose an action within a larger setA bounded only by the ﬁrst set of constraints, i.e.A ignores current limits
+in generators and DES units, as well as storage levels. In the case where the agent selects an action at∈A
+that falls outside of the current action space A(st), the action that is actually applied in the environment
+during the next state() call is the action inA(st) that stands the closest toat, according to the Euclidean
+distance (see Appendix A.6).
+As a result, A is always bounded. Its bounds can be retrieved by the agent through the built-in
+action space() function. This allows users to follow good practices by working with agents that gen-
+erate normalized action vectors in [−1, 1]Na.
+3.4 Observation Space
+In general, DNOs rarely have access to the full state of the distribution network when doing ANM. To model
+these real-world scenarios, Gym-ANM allows the design of a unique observation space O through the im-
+plementation of the observation() component, which may result in a partially observable task. We only
+assume that the size ofot remains constant.
+To simplify the design of customized observation spaces, Gym-ANM also allows researchers to simply spec-
+ify a set of variables to include in the observation vectors (e.g., branch active power ﬂows{P12,P 23} and bus
+voltage magnitudes{|V0|,|V2|}) of the new environment. The full list of available variables from which to
+choose is given in Appendix C.
+The agent can access the bounds of the observation space through the function call observation space().
+This functionality may be of particular interest to agents that use neural networks to learn ANM policies, in
+which case normalized input vectors may increase training speed and stability.
+3.5 Transition Function
+Each state transition occurs in two steps. First, the outcomes of the internal stochastic variables
+{P (dev)
+l,t+1}l∈DL,{P (max)
+g,t+1}g∈DG−{gslack}, and{aux(k)
+t+1}K−1
+k=0 are generated by the next vars() block of the
+Gym-ANM framework (see Figure 2). Once the selected action at∈A has been passed to the environment,
+the remainder of the transition is handled by the next state() component in a deterministic way. The
+reactive power injection of each load d∈D is directly inferred from its active power injection (assuming
+a constant power factor). The action at is then mapped to A(st) according to the Euclidean distance and
+applied in the environment. Finally, all electrical quantities are updated by solving a set of so-called network
+equations (see Appendix A.5). The computational steps taken bynext state() are described in more detail
+in Appendix A.6.
+7
+
+
+===== PAGE 8 =====
+
+A PREPRINT - JULY 1, 2021
+3.6 Reward Function
+The reward signal is implemented by the built-in reward() block of Figure 2 and is given by:
+rt =
+
+
+
+clip(−rclip,ct,rclip), ifst+1 /∈S terminal,
+−rclip
+1−γ, ifst /∈S terminal andst+1∈S terminal,
+0, else,
+(4)
+where
+ct =−(∆Et:t+1 +λφ(st+1)). (5)
+Using a reward clipping parameter rclip ensures that any transition from a non-terminal state to a terminal
+one (i.e., when the power grid collapses), generates a much larger reward than any other transition does. As
+a result, it encourages the agent to learn a policy that avoids such scenarios at all costs. Subsequent rewards
+are always zero, until a new trajectory is started by sampling a new initial states0.
+During all other transitions, the energy loss ∆Et:t+1 is computed in three parts:
+∆Et:t+1 = ∆E(1)
+t:t+1 + ∆E(2)
+t:t+1 + ∆E(3)
+t:t+1 , (6)
+where:
+• ∆E(1)
+t:t+1 is the total transmission energy loss during (t,t + 1]. This is a result of leakage in trans-
+mission lines and transformers.
+• ∆E(2)
+t:t+1 is the total net amount of energy ﬂowing from the grid into DES units during (t,t + 1].
+Over a sufﬁciently large number of timesteps, the sum of these terms will approximate the amount
+of energy lost due to leakage in DES units. That is, taking an energy of ∆E from the grid using a
+DES unitd∈D DES will yield a cost of ∆E. Given a charging and discharging efﬁciency factor of
+ηd ford, injecting the remaining energy after a total round-trip loss will result in a cost of−η2∆E,
+totalling a round-trip cost of (1−η2)∆E. This is the total energy loss over the round-trip.
+• ∆E(3)
+t:t+1 is the total amount of energy loss as a result of renewable generation curtailment of gener-
+atorsDRER during (t,t + 1]. Depending on the regulation, this can be thought of as a fee paid by
+the DNO to the owners of the generators that get curtailed, as ﬁnancial compensation.
+In the penalty term φ(st+1), we consider two types of network-wide operating constraints. The ﬁrst is the
+limit on the amount of power 1 that can ﬂow through a transmission link eij∈E , referred to as the rating of
+that link. These constraints are needed to prevent lines and transformers from overheating. The second type
+of constraint is a limit on the allowed voltage magnitude |Vi| at each bus i∈N . The latter are necessary
+conditions to maintain stability throughout the network and ensure proper operation of devices connected to
+the grid.
+In practice, violating any network constraint can lead to damaging parts of the DN infrastructure (e.g., lines
+or transformers) or power outages. Both can have important economic consequences for the DNO. For that
+reason, ensuring that the DN operates within its constraints is often prioritized compared to minimizing
+energy loss. Although our choice of reward function does not guarantee that an optimal policy will never
+violate these constraints, choosing a large λ will ensure that these violations remain small. This would,
+in practice, have a negligible impact on the operation of the DN. In addition, the risk of violating real-
+life constraints in the DN could be further reduced by setting an over-restrictive set of constraints in the
+environment.
+The technical details behind the computation ofrt can be found in Appendix A.7.
+3.7 Model Predictive Control Scheme
+In order to quantify how well an agent is performing on a speciﬁc Gym-ANM task, we can cast the task as a
+MPC problem in which a multi-stage (N-stage) OPF problem is solved at each timestep. The resulting policy
+provides us with a loose lower bound on the best performance achievable in the environment.
+The general MPC algorithm that we provide takes as input forecasts of demand for each load l∈D L and
+of maximum generation for each non-slack generator g ∈ DG−{gslack} over the optimization horizon
+1In the literature, these limits are sometimes described in terms of current ﬂows, instead of power ﬂows.
+8
+
+
+===== PAGE 9 =====
+
+A PREPRINT - JULY 1, 2021
+[t + 1,t + N]. We refer to the resulting policy as πMPC−N . We then consider two variants: policies
+πconstant
+MPC−N andπperfect
+MPC−N . The former, πconstant
+MPC−N , uses constant forecasts over the optimization horizon. Its
+simplicity means that it can be used in any Gym-ANM environment2. The other variant,πperfect
+MPC−N , assumes
+perfect predictions of future demand and generation are available for planning. Although it can only be
+used in simple environments such as ANM6-Easy (see Section 4.2), its performance is superior to that of
+πconstant
+MPC−N . This means it provides the user with a tighter lower bound on the best achievable performance.
+Both variants are formally described in Appendix B.
+Both MPC-based control schemes model the power grid using the DC power ﬂow equations, a linearized
+version of the AC power ﬂow equations. They thus solve a multi-stage DCOPF problem at each timestep.
+The DCOPF formulation relies on three assumptions: (a) transmission lines are lossless, (b) the difference
+between adjacent bus voltage angles is small, and (c) bus voltage magnitudes are close to unity.
+It is worth stressing that the MPC method that we propose here is an example of a traditional approach to
+tackling ANM problems. Because RL algorithms make less assumptions about the intrinsic structure of the
+problem, however, they have the potential to overcome the limitations of such optimization approaches and
+reach better solutions. This, of course, does not mean that RL should be blindly applied to most multi-step
+OPF-like problems, but, rather, that it might prove to be a good alternative when traditional approaches reach
+their limitations. This remains a hypothesis which, we hope, Gym-ANM will help conﬁrm or deny.
+4 Environments
+4.1 Gym-ANM Environments.
+In conformity with the Gym framework, any Gym-ANM environment provides four main functions that
+allow the agent to interact with it: reset(), step(action), render(), and close(). An example of code
+illustrating the interactions between an agent agent and an environment env is shown in Listing 1 (inspired
+from [23]). The agent-learning procedure is omitted for clarity. Guidelines to design and implement new
+Gym-ANM environments can be found in Appendix C.
+env = gym . make ( ’ MyANMEnv ’) # I n i t i a l i z e the e n v i r o n m e n t .
+obs = env . reset () # Reset the env . and collect o0 .
+for t in range (1 , T ):
+env . render () # Update the re nd er in g .
+a = agent . act ( obs ) # The agent takes ot as input and chooses at .
+obs , r , done , info = env . step ( a )
+# The action is applied , and are ou tp ut te d :
+# - obs : the new o b s e r v a t i o n ot+1 ,
+# - r : the reward r(st,a t,s t+1),
+# - done : True if st+1∈S terminal ,
+# - info : extra info about the t r a n s i t i o n .
+env . close () # Close the e n v i r o n m e n t and stop re nd er in g .
+Listing 1: A code snippet (Python 3) illustrating environment-agent interactions.
+4.2 ANM6-Easy.
+Along with this paper we are also releasing ANM6-Easy, a Gym-ANM environment that models a series
+of ANM characteristic problems. ANM6-Easy is built around a DN consisting of six buses, with one high-
+voltage to low-voltage transformer, connected to a total of three passive loads, two renewable energy gener-
+ators, one DES unit, and one fossil fuel generator used as slack generator. The topology of the network is
+shown in Figure 1 and its technical characteristics are summarized in Appendix E. We use a time discretiza-
+tion of ∆t = 0.25 (i.e., 15 minutes) by analogy with the typical duration of a market period, much like
+the work of [30]. The observation() component is the identity function. This leads to a fully observable
+environment withot =st. The discount factor is ﬁxed to γ = 0.995, the reward penalty toλ = 103, and the
+reward clipping value torclip = 100.
+2See the project repository for more information.
+9
+
+
+===== PAGE 10 =====
+
+A PREPRINT - JULY 1, 2021
+In order to limit the complexity of the task, we also chose to make the processes generated by the
+next vars() block deterministic. To do so, we use a ﬁxed 24-hour time series that repeats every day,
+indeﬁnitely. A single auxiliary variable aux(0)
+t = (T0 +t) mod 24
+∆t representing the time of day is used
+to index the time series, where T0 ∈{ 0, 1,..., 24
+∆t− 1} is the starting timestamp of the trajectory. Dur-
+ing each timestep transition, the next vars() function thus behaves as described by Algorithm 1, where
+Pl[0,..., 24
+∆t− 1] and Pg[0,..., 24
+∆t− 1] are the ﬁxed daily time series of load injections P (dev)
+l,t and max-
+imum generationsP (max)
+g,t , respectively. The initialization procedure of the environment is also provided in
+Appendix E.
+Algorithm 1 Implementation of next vars() in ANM6-Easy.
+1: aux(0)
+t+1← (aux(0)
+t + 1) mod 24
+∆t
+2: forl∈D L do
+3: P (dev)
+l,t+1 ← Pl[aux(0)
+t+1]
+4: end for
+5: forg∈D G−{gslack} do
+6: P (max)
+g,t+1 ← Pg[aux(0)
+t+1]
+7: end for
+The daily patterns were engineered so as to produce three problematic situations in the DN. Figures 3, 4, and
+5 show the power injections, power ﬂows, and voltage levels that would result in each situation if the agent
+neither curtailed the renewable energies nor used the DES unit. Each situation lasts for seven, three, and three
+hours, respectively, during which the power injections remain constant. A two-hour-long period is used to
+transition between situations, during which each power injection is linearly incremented from its old to new
+value.
+Figure 3: Situation 1, lasting between 11:00 p.m. and 06:00 a.m. every day.
+Situation 1 This situation (Figure 3) characterizes a windy night, when the consumption is low, the PV
+production null, and the wind production at its near maximum. Due to the very low demand from the indus-
+trial load, the wind production must be curtailed to avoid an overheating of the transmission lines connecting
+buses 0 and 4. This is also a period during which the agent might use this extra generation to charge the DES
+unit in order to prepare to meet the large morning demand from the EV charging garage (see Situation 2).
+Situation 2 In this situation (Figure 4), bus 5 is experiencing a substantial demand due to a large number
+of EVs being plugged-in at around the same time. This could happen in a large public EV charging garage.
+10
+
+
+===== PAGE 11 =====
+
+A PREPRINT - JULY 1, 2021
+In the morning, workers of close-by companies would plug in their car after arriving at work and, in the
+evening, residents of the area would plug in their cars after getting home. In order to emphasize the problems
+arising from this large localized demand, we assume that the other buses (3 and 4) inject or withdraw very
+little power into/from the network. During those periods of the day, the DES unit must provide enough power
+to ensure that the transmission path from bus 0 to bus 5 is not over-rated, which would lead to an overheating
+of the line. For this to be possible, the agent must strategically plan ahead to ensure a sufﬁcient charge level
+at the DES unit.
+Figure 4: Situation 2, lasting between 08:00 a.m. and 11:00 a.m. and between 06:00 p.m. and 09:00 p.m.
+every day.
+Situation 3 Situation 3 (Figure 5) represents a scenario that might occur in the middle of a sunny windy
+weekday. No one is home to consume the solar energy produced by residential PVs at bus 1 and the wind
+energy production exceeds the industrial demand at bus 2. In this case, both renewable generators should be
+adequately curtailed while again storing some of the extra energy to anticipate the EV late afternoon charging
+period, as depicted in Situation 2.
+5 Experiments
+In this section, we illustrate the use of the Gym-ANM framework. We compare the performance of PPO and
+SAC, two model-free deep RL algorithms, against that of the MPC-based policies πconstant
+MPC−N andπperfect
+MPC−N
+introduced in Section 3.7 on the ANM6-Easy task. For both algorithms, we used the implementations from
+Stable Baselines 3 [32], a popular library of RL algorithms. Since our goal was not to compute an excellent
+approximation of an optimal policy, but rather to show that existing RL algorithms can already yield good
+performance with very little hyperparameter tuning, most hyperparameters were set to their default value
+(see Appendix F). The code used for all experiments in this section can be found at https://github.com/
+robinhenry/gym-anm-exp.
+5.1 Algorithms
+Proximal Policy Optimization PPO is a stable and effective on-policy policy gradient algorithm. It alter-
+nates between collecting experience, in the form of ﬁnite-length trajectories starting from states s0∼ p0(·)
+and following the current policy, and performing several epochs of optimization on the collected data to up-
+date the current policy (after which the collected experience is discarded). During each policy update step, the
+policy parametersθ are updated by maximizing (e.g., stochastic gradient ascent) a clipped objective function
+characterized by a hyperparameterϵ that dictates how far away the new policyπθ is allowed to diverge from
+the oldπθold. The objective also requires the use of an advantage-function estimator, which is achieved using
+11
+
+
+===== PAGE 12 =====
+
+A PREPRINT - JULY 1, 2021
+Figure 5: Situation 3, lasting between 01:00 p.m. and 04:00 p.m. every day.
+a learned-state value functionVφ(s). In the Stable Baselines 3 implementation that we used, both the policy
+πθ and the state-value functionVφ(s) were represented using separate fully connected MLPs with weights θ
+andφ, respectively, each with two layers of 64 units and tanh nonlinearities.
+Soft Actor-Critic SAC is an off-policy actor-critic algorithm based on the maximum entropy RL frame-
+work. The policy is trained to maximize a trade-off between expected return and entropy, a measure of
+randomness in the policy. It alternates between collecting and storing experience of the form(st,at,rt,st+1)
+into a replay buffer, regularly ending the current trajectory to start from a new initial state s0∼ p0(·), and
+updating the policyπθ (actor) and a soft Q-functionQφ(st,at) (critic) from batches sampled from the replay
+buffer (e.g., stochastic gradient descent), in an ofﬂine manner. In the same manner as the work of Haarnoja
+et al. [25], the implementation that we used makes use of two Q-functions to mitigate positive bias in the
+policy improvement step. Both the policyπθ and the Q-functionsQφ1,Qφ2 were represented using separate
+fully connected MLPs with weights θ,φ1, and φ2, respectively, each with two layers of 64 units and ReLU
+nonlinearities. Separate target Q-networks that slowly track Qφ1, Qφ2 were also used to improve stability,
+using an exponentially moving average with smoothing constantτ.
+5.2 Performance metric
+We evaluate the performance of the different algorithms on the ANM6-Easy task as follows. Every Neval
+steps the agent takes in the environment (i.e., selects an action), we freeze the training procedure and evaluate
+the current policy on another instance of the environment. To do so, we collect Nr rollouts of T timesteps
+each, using the current policyπθ, and report:
+Jπθ = Es0∼p0(·)[Jπθ(s0)]≈ 1
+Nr
+Nr∑
+i=1
+T−1∑
+t=0
+γtr(i)
+t , (7)
+wheres(i)
+0 ∼p0(·) andr(i)
+t are the initial state and rewards obtained in the ith rollout, respectively. Because
+the reward signal is bounded by a ﬁnite constant rclip∈ R (i.e.,|rt|∈ [−rclip,rclip],∀t), approximating
+Jπθ(s0) = lim T→∞
+∑T−1
+t=0 γtrt by∑T−1
+t=0 γtrt may result in a deviation of up to rclip
+γT
+1−γ from the true
+inﬁnite discounted return, since:
+Jπθ(s0)≤rclip
+1
+1−γ and
+T−1∑
+t=0
+γtrt≤rclip( 1
+1−γ− γT
+1−γ ). (8)
+In our experiments, we usedNr = 5 and setT = 3000, such thatrclip
+γT
+1−γ < 10−2 results in negligible error
+terms.
+12
+
+
+===== PAGE 13 =====
+
+A PREPRINT - JULY 1, 2021
+0.0 0.5 1.0 1.5 2.0 2.5 3.0
+Timestep (million)
+5000
+4000
+3000
+2000
+1000
+0
+Discounted return
+computed as in Eqn. (7)
+SAC
+PPO
+Figure 6: Evolution of the empirical discounted returnJπθ (T = 3000) during training.
+5.3 Results
+We trained both the PPO and SAC algorithms on the ANM6-Easy environment for three million steps, starting
+from a new initial state s0∼ p0(·) every 5000 steps (or earlier if a terminal state is reached), and evaluated
+their performance everyNeval = 104 steps. Both algorithms used normalized observation and action vectors.
+We repeated the same procedure with 5 random seeds and plotted the mean and standard deviation of the
+evolution of their performance during training in Figure 6.
+Table 1 reports the average performance of policiesπconstant
+MPC−N andπperfect
+MPC−N for different planning stepsN
+and safety margin hyperparametersβ (see Appendix B). As expected, the performance ofπperfect
+MPC−N increases
+withN, since the algorithm has access to perfect demand and generation forecasts. In the case ofπconstant
+MPC−N ,
+the best average return is capped at 129.1 and increasingN does not improve performance.
+β\N 8 16 32
+0.92 -129.1 -129.1 -129.1
+0.94 -129.3 -129.3 -129.2
+0.96 -129.6 -129.5 -129.5
+0.98 -130.5 -130.5 -130.5
+1 -134.8 -134.7 -134.7
+β\N 8 16 32 64
+0.92 -100.6 -60.3 -16.0 -16.0
+0.94 -99.7 -58.2 -14.7 -14.7
+0.96 -102.1 -57.5 -14.8 -14.8
+0.98 -102.4 -59.6 -19.0 -19.0
+1 -108.0 -68.5 -29.1 -29.1
+Table 1: Average discounted returns Jπθ for πconstant
+MPC−N (left) and πperfect
+MPC−N (right), for different planning
+horizonsN and safety margin hyperparametersβ.
+Table 2 compares the best performance of the trained agents against that of the MPC policies. Note that both
+RL agents reach better performances than πconstant
+MPC−N . That is, both PPO and SAC outperform a MPC-based
+policy in which future demand and generation are assumed constant.
+Finally, Table 2 also summarizes computational CPU times required for each control policy to select an action
+on a MacBook 2.3 GHz Intel Core i5 with 8GB of RAM. Clearly, RL policies have the advantage of requiring
+signiﬁcantly less time for action selection, since the mapping from state (or observation) to action is stored
+in the form of function approximators, which can be efﬁciently evaluated. Nevertheless, the learning of these
+function approximators may require signiﬁcant computational times, which vary greatly between different
+RL algorithms.
+6 Conclusion
+In this paper, we proposed Gym-ANM, a framework for designing and implementing RL environments that
+model ANM problems in electricity distribution networks. We also introduced ANM6-Easy, a particular
+instance of such environments that highlights common challenges in ANM. Finally, we showed that state-
+of-the-art RL algorithms can already reach performances similar to that of MPC-based policies that solve
+multi-stage DCOPF problems, with little hyperparameter tuning.
+13
+
+
+===== PAGE 14 =====
+
+A PREPRINT - JULY 1, 2021
+PPO SAC πconstant
+MPC−16 πperfect
+MPC−32
+Jπθ -93.6± 15.3 -56.1 ± 26.8 -129.1 ± 0.4 -14.7 ± 0.2
+Time (ms) 0.47 ± 0.19 0.52 ± 0.28 31.60 ± 30.38 61.75 ± 31.21
+Table 2: Top row: mean and standard deviation of the best discounted returns over 5 random seeds. Bottom
+row: mean and standard deviation of the CPU time required to select an action on a MacBook 2.3 GHz Intel
+Core i5 with 8GB of RAM.
+We hope that our work will inspire others in the RL community to tackle decision-making problems in
+electricity networks, potentially through the use of our framework. We believe that Gym-ANM has the
+potential to model tasks of a wide range of complexity, creating a novel extensive playground for advanced
+RL research.
+7 Acknowledgements
+We would like to thank Raphael Fonteneau, Quentin Gemine, and S ´ebastien Mathieu at the University of
+Li`ege for their valuable early feedback and advice, as well as Gaspard Lambrechts and Bardhyl Miftari for
+the feedback they provided as the ﬁrst users of Gym-ANM.
+References
+[1] Richard S Sutton and Andrew G Barto. Reinforcement learning: An introduction . MIT press, 2018.
+[2] Mevludin Glavic, Rapha ¨el Fonteneau, and Damien Ernst. Reinforcement learning for electric power
+system decision and control: Past considerations and perspectives. IF AC-PapersOnLine, 50(1):6918 –
+6927, 2017. 20th IFAC World Congress.
+[3] V olodymyr Mnih, Koray Kavukcuoglu, David Silver, Alex Graves, Ioannis Antonoglou, Daan Wier-
+stra, and Martin Riedmiller. Playing Atari with deep reinforcement learning. arXiv preprint
+arXiv:1312.5602, 2013.
+[4] V olodymyr Mnih, Koray Kavukcuoglu, David Silver, Andrei A Rusu, Joel Veness, Marc G Bellemare,
+Alex Graves, Martin Riedmiller, Andreas K Fidjeland, Georg Ostrovski, et al. Human-level control
+through deep reinforcement learning. Nature, 518(7540):529–533, 2015.
+[5] David Silver, Aja Huang, Chris J Maddison, Arthur Guez, Laurent Sifre, George Van Den Driessche,
+Julian Schrittwieser, Ioannis Antonoglou, Veda Panneershelvam, Marc Lanctot, et al. Mastering the
+game of Go with deep neural networks and tree search. Nature, 529(7587):484, 2016.
+[6] Oriol Vinyals, Igor Babuschkin, Wojciech M Czarnecki, Micha ¨el Mathieu, Andrew Dudzik, Junyoung
+Chung, David H Choi, Richard Powell, Timo Ewalds, Petko Georgiev, et al. Grandmaster level in
+starcraft ii using multi-agent reinforcement learning. Nature, 575(7782):350–354, 2019.
+[7] Marc Peter Deisenroth, Gerhard Neumann, Jan Peters, et al. A survey on policy search for robotics.
+F oundations and Trends® in Robotics, 2(1–2):1–142, 2013.
+[8] Petar Kormushev, Sylvain Calinon, and Darwin G Caldwell. Reinforcement learning in robotics: Ap-
+plications and real-world challenges. Robotics, 2(3):122–148, 2013.
+[9] Jens Kober, J Andrew Bagnell, and Jan Peters. Reinforcement learning in robotics: A survey. The
+International Journal of Robotics Research, 32(11):1238–1274, 2013.
+[10] Shixiang Gu, Ethan Holly, Timothy Lillicrap, and Sergey Levine. Deep reinforcement learning for
+robotic manipulation with asynchronous off-policy updates. In 2017 IEEE international conference on
+robotics and automation (ICRA), pages 3389–3396. IEEE, 2017.
+[11] Ahmad EL Sallab, Mohammed Abdou, Etienne Perot, and Senthil Yogamani. Deep reinforcement
+learning framework for autonomous driving. Electronic Imaging, 2017(19):70–76, 2017.
+[12] Matthew O’Kelly, Aman Sinha, Hongseok Namkoong, Russ Tedrake, and John C Duchi. Scalable
+end-to-end autonomous vehicle testing via rare-event simulation. In Advances in Neural Information
+Processing Systems, pages 9827–9838, 2018.
+14
+
+
+===== PAGE 15 =====
+
+A PREPRINT - JULY 1, 2021
+[13] Dong Li, Dongbin Zhao, Qichao Zhang, and Yaran Chen. Reinforcement learning and deep learning
+based lateral control for autonomous driving [application notes]. IEEE Computational Intelligence
+Magazine, 14(2):83–98, 2019.
+[14] Gabriel Dulac-Arnold, Daniel Mankowitz, and Todd Hester. Challenges of real-world reinforcement
+learning. arXiv preprint arXiv:1904.12901, 2019.
+[15] Xi Fang, Satyajayant Misra, Guoliang Xue, and Dejun Yang. Smart grid—the new and improved power
+grid: A survey. IEEE communications surveys & tutorials , 14(4):944–980, 2011.
+[16] Paul L Joskow et al. Lessons learned from the electricity market liberalization, 2008.
+[17] Robert H Lasseter. Microgrids. In 2002 IEEE Power Engineering Society Winter Meeting. Conference
+Proceedings (Cat. No. 02CH37309), volume 1, pages 305–308. IEEE, 2002.
+[18] Florin Capitanescu, Luis F Ochoa, Harag Margossian, and Nikos D Hatziargyriou. Assessing the poten-
+tial of network reconﬁguration to improve distributed generation hosting capacity in active distribution
+systems. IEEE Transactions on Power Systems, 30(1):346–356, 2014.
+[19] Nic Lutsey, Peter Slowik, and Lingzhi Jin. Sustaining electric vehicle market growth in us cities.
+International Council on Clean Transportation , 2016.
+[20] KC Divya and Jacob Østergaard. Battery energy storage technology for power systems—an overview.
+Electric power systems research, 79(4):511–520, 2009.
+[21] Manuel G ¨otz, Jonathan Lefebvre, Friedemann M ¨ors, Amy McDaniel Koch, Frank Graf, Siegfried Ba-
+johr, Rainer Reimert, and Thomas Kolb. Renewable power-to-gas: A technological and economic
+review. Renewable energy, 85:1371–1390, 2016.
+[22] Simon Gill, Ivana Kockar, and Graham W Ault. Dynamic optimal power ﬂow for active distribution
+networks. IEEE Transactions on Power Systems, 29(1):121–131, 2013.
+[23] Greg Brockman, Vicki Cheung, Ludwig Pettersson, Jonas Schneider, John Schulman, Jie Tang, and
+Wojciech Zaremba. Openai Gym. arXiv preprint arXiv:1606.01540, 2016.
+[24] John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. Proximal policy
+optimization algorithms. arXiv preprint arXiv:1707.06347, 2017.
+[25] Tuomas Haarnoja, Aurick Zhou, Pieter Abbeel, and Sergey Levine. Soft actor-critic: Off-policy max-
+imum entropy deep reinforcement learning with a stochastic actor. arXiv preprint arXiv:1801.01290 ,
+2018.
+[26] Eduardo F Camacho and Carlos Bordons Alba. Model predictive control. Springer Science & Business
+Media, 2013.
+[27] J Carpentier. Contribution `a l’´etude du dispatching ´economique. Bulletin de la Soci ´et´e Franc ¸aise des
+Electriciens, 3(1):431–447, 1962.
+[28] Stephen Frank, Ingrida Steponavice, and Steffen Rebennack. Optimal power ﬂow: a bibliographic
+survey i. Energy Systems, 3(3):221–258, 2012.
+[29] Stephen Frank, Ingrida Steponavice, and Steffen Rebennack. Optimal power ﬂow: a bibliographic
+survey ii. Energy Systems, 3(3):259–289, 2012.
+[30] Quentin Gemine, Damien Ernst, and Bertrand Corn ´elusse. Active network management for electrical
+distribution systems: problem formulation, benchmark, and approximate solution. Optimization and
+Engineering, 18(3):587–629, 2017.
+[31] H-D Chiang, Ian Dobson, Robert J Thomas, James S Thorp, and Lazhar Fekih-Ahmed. On voltage
+collapse in electric power systems. IEEE Transactions on Power systems, 5(2):601–611, 1990.
+[32] Antonin Rafﬁn, Ashley Hill, Maximilian Ernestus, Adam Gleave, Anssi Kanervisto, and Noah Dor-
+mann. Stable baselines3. https://github.com/DLR-RM/stable-baselines3, 2019.
+[33] Ray Daniel Zimmerman, Carlos Edmundo Murillo-S ´anchez, and Robert John Thomas. Matpower:
+Steady-state operations, planning, and analysis tools for power systems research and education. IEEE
+Transactions on power systems, 26(1):12–19, 2010.
+[34] Stephan Engelhardt, Istvan Erlich, Christian Feltes, J ¨org Kretschmann, and Fekadu Shewarega. Reac-
+tive power capability of wind turbines based on doubly fed induction generators.IEEE Transactions on
+Energy Conversion, 26(1):364–372, 2010.
+[35] David I Sun, Bruce Ashley, Brian Brewer, Art Hughes, and William F Tinney. Optimal power ﬂow by
+newton approach. IEEE Transactions on Power Apparatus and systems , (10):2864–2880, 1984.
+15
+
+
+===== PAGE 16 =====
+
+A PREPRINT - JULY 1, 2021
+[36] Steven Diamond and Stephen Boyd. CVXPY: A Python-embedded modeling language for convex
+optimization. Journal of Machine Learning Research, 17(83):1–5, 2016.
+[37] Akshay Agrawal, Robin Verschueren, Steven Diamond, and Stephen Boyd. A rewriting system for
+convex optimization problems. Journal of Control and Decision , 5(1):42–60, 2018.
+16
+
+
+===== PAGE 17 =====
+
+A PREPRINT - JULY 1, 2021
+Appendices
+A Electricity Distribution Network Simulator
+This Appendix describes in more detail the dynamics of the alternative current (AC) power grid on top of
+which Gym-ANM environments are built. Section A.1 introduces some technical power system notions used
+in later analyses. Sections A.2, A.3.1, A.3.2, and A.3.3 describe the mathematical model and assumptions
+used to simulate the behavior of transmission links, passive loads, distributed generators, and DES units,
+respectively. Section A.4 then introduces the set of network constraints that we would like the learned ANM
+control scheme to satisfy, and Section A.5 derives the set of equations that govern the network electricity
+ﬂows. Finally, Sections A.6 and A.7 derive the sequence of computational steps that make up the environment
+transition and reward functions, respectively.
+A.1 Preliminaries
+Today, the majority of AC transmission and distribution networks dispatch electricity using the so-called
+three-phase system. In this system, electricity ﬂows in three parallel circuits, each associated with its own
+phase. In a balanced three-phase network, the electrical quantities of each phase have the same magnitude
+and differ by a 120◦ phase shift, i.e. phase 3 is a time-delayed version of phase 2, which is itself a time-
+delayed version of phase 1. Conveniently, any balanced three-phase system can thus be analyzed using an
+equivalent single-phase representation, where only one of the phases is taken into account. The complex
+phasors corresponding to the other two phases can be obtained by applying a 120◦ or 240◦ phase shift to the
+ﬁrst-phase phasors. All systems implemented by Gym-ANM are assumed to be such three-phase balanced
+networks, and we adopt its equivalent single-phase representation in the following derivations.
+In order to efﬁciently generate and distribute electricity, power grids are also divided into so-called voltage
+zones. Each zone is characterized by a particular nominal voltage level that represents the average voltage
+level of the nodes in that zone. For instance, a 220kV (ultra-high voltage) transmission network may be
+connected to an intermediary 150kV (high voltage) network, which is then connected to a 30kV (medium
+voltage) distribution network. Transitions between the different voltage levels are carried out by power trans-
+formers that bring up (step-up transformers) or down (step-down transformers) voltages while minimizing
+power losses. For mathematical convenience, power systems that include several voltage zones are often
+analyzed using the per-unit (p.u.) notation, in which all electrical quantities are normalized with respect to a
+set of base quantities chosen for the whole system. In practice, the per-unit analysis method becomes very
+handy as it removes the need to include nominal voltage levels in derivations. This allows us to analyze the
+network as a single circuit and cancels out the effect of transformers whose tap ratio is identical to the ratio
+of the base voltages of the zones it connects. In other words, only so-called off-nominal transformers need to
+be considered. In the remainder of this Appendix, all quantities are expressed in p.u.
+A.2 Branches
+As introduced in Section 2.2, we model a distribution network as a set of nodes N connected by a set
+of directed edges E. Each edge eij ∈ Emay represent a sequence of (a) transmission lines, (b) power
+transformers, and/or (c) phase shifters linking buses i and j. Any combination of (a)-(c) components can
+be equivalently mapped to the common branch representation adapted from [33] and shown in Figure 7.
+Formally, brancheij∈E is characterized by ﬁve parameters: a series resistance rij, a series reactancexij, a
+total charging susceptancebij, a tap ratio magnitudeτij, and a phase shiftθij. The branch series admittance
+is given by yij = (rij + ixij)−1, each shunt admittance by ysh
+ij = ibij
+2 , and the complex tap ratio of the
+off-nominal transformer bytij =τijeiθij . Note that one can use a value of tij = 1 to represent the absence
+of a transformer, or, equivalently, the presence of an on-nominal transformer.
+A.3 Electrical Devices
+The different electrical devicesD connected to the grid are classiﬁed as passive loadsDL, generatorsDG, or
+DES unitsDDES . Within generators, we further differentiate between renewable generators DRER⊂D G
+and the slack generator gslack∈D G−D RER. Much like what was done by Gemine et al.[30], the range
+17
+
+
+===== PAGE 18 =====
+
+A PREPRINT - JULY 1, 2021
+Iij I A
+yij = 1
+rij +ixij
+B Iji
+tij =τijeiθij
+tij : 1
+ysh
+ij = ibij
+2
++
+−
+V ysh
+ij = ibij
+2
++
+−
+Vi
++
+−
+Vj
+Figure 7: Common branch model, consisting of a π transmission line model in series with an off-nominal
+phase-shifting transformer, connecting busi∈N and busj∈N .
+of operation of each deviced∈D is modelled by a setRd,t⊂ R2 of valid (P (dev)
+d,t ,Q (dev)
+d,t ) power injection
+points for timestept. These constraints are enforced by the environment at all times (see Appendix A.6).
+A.3.1 Passive Loads
+We deﬁne passive loads as the devices that only withdraw power from the network. We also assume that
+each passive load l∈D L has a constant power factor cosφl and that its negative injection P (dev)
+l,t is lower
+bounded3 byPl. Formally, the range of operationRl,t =Rl ofl is deﬁned by:
+Rl ={(P,Q )∈ R2|Pl≤P≤ 0,Q
+P = tanφl}, ∀l∈D L , (9)
+for allt∈T .
+A.3.2 Generators
+Generators, with the exception ofgslack, refer to devices that only inject power into the network. The physical
+limitations of any generator g∈D G are modelled by a range of allowed active power injections [Pg,Pg]
+and of reactive power injections [Qg,Qg]. Additional linear constraints Q(dev)
+g,t ≤ τ (1)
+g P (dev)
+g,t +ρ(1)
+g and
+Q(dev)
+g,t ≥ τ (2)
+g P (dev)
+g,t +ρ(2)
+g can also be added to limit the ﬂexibility of reactive power injection when P is
+close to its maximum value. 4 These constraints result in the range of operation shown in Figure 8. Finally,
+a dynamic upper bound P (max)
+g,t ∈ [Pg,Pg] is also generated by the next_vars() block to model time-
+dependent constraints onP (dev)
+g,t .
+The resulting dynamic region of operationRg,t is formally expressed as:
+Rg,t ={(P,Q )∈ R2|Pg≤P≤P (max)
+g,t ,
+Qg≤Q≤Qg ,
+Q≤τ (1)
+g P +ρ(1)
+g ,
+Q≥τ (2)
+g P +ρ(2)
+g }, ∀g∈D G−{gslack}, (10)
+3When designing a new environment, the user can set Pl =−∞ to model an unbounded load. Note that a ﬁnite lower
+bound value is required to have a bounded state spaceS.
+4These additional linear ﬂexibility constraints can be used to approximate current limits of power converters and/or
+of electric generators [34]. They can also be ignored by settingQ+
+g =Qg andQ−
+g =Qg.
+18
+
+
+===== PAGE 19 =====
+
+A PREPRINT - JULY 1, 2021
+0
+Figure 8: Fixed power injection constraints of distributed generatorsg∈D G−{gslack}.
+where τ (1)
+g ,ρ (1)
+g ,τ (2)
+g ,ρ (2)
+g are computed based on the parameters {Pg,P +
+g ,Qg, Qg,Q +
+g,Q−
+g} provided in
+the network input dictionary (see Appendix D) as:
+τ (1)
+g = Q+
+g−Qg
+Pg−P +g
+, ρ (1)
+g =Qg−τ (1)
+g P +
+g ,
+τ (2)
+g =
+Q−
+g −Qg
+Pg−P +g
+, ρ (2)
+g =Qg−τ (2)
+g P +
+g . (11)
+In order to ensure that a solution to the network equations derived in Section A.5 is found at each timestep,
+we do not restrict the range of operation of the slack generatorgslack. Instead, we assume that it can provide
+unlimited active and reactive power to the network.
+A.3.3 Distributed Energy Storage (DES)
+DES units can both inject power into (discharge) and withdraw power from (charge) the network. Their time-
+independent physical constraints are modelled much like that of generators, as shown in Figure 9, where:
+τ (1)
+d = Q+
+d−Qd
+Pd−P +
+d
+, ρ (1)
+d =Qd−τ (1)
+d P +
+d , (12)
+τ (2)
+d =
+Q−
+d−Qd
+Pd−P +
+d
+, ρ (2)
+d =Qd−τ (2)
+d P +
+d , (13)
+τ (3)
+d =
+Qd−Q−
+d
+P−
+d −Pd
+, ρ (3)
+d =Qd−τ (3)
+d P−
+d , (14)
+τ (4)
+d = Qd−Q+
+d
+P−
+d −Pd
+, ρ (4)
+d =Qd−τ (4)
+d P−
+d . (15)
+Unlike generators, however, the active power injection of a DES unit d∈D DES is further constrained by
+its current state of charge SoCd,t∈ [SoCd,SoCd]. For instance, a fully charged unit would not be able to
+withdraw even the slightest amount of active power. Consequently, we chose to impose additional limits on
+their next active power injectionP (dev)
+d,t+1. This is to ensure that the injection can stay constant within (t,t + 1]
+without violating any storage level constraints, i.e. thatSoCd≤SoCd,t+1≤SoCd. Given thatSoCd,t+1 is
+obtained from:
+SoCd,t+1 =
+{
+SoCd,t− ∆tηP (dev)
+d,t+1 , ifP (dev)
+d,t+1≤ 0,
+SoCd,t− ∆t
+η P (dev)
+d,t+1 , else, (16)
+19
+
+
+===== PAGE 20 =====
+
+A PREPRINT - JULY 1, 2021
+0
+Figure 9: Fixed power injection constraints for DES unitsd∈D DES .
+whereη∈ [0, 1] is the charging and discharging efﬁciency factor (assumed equal), the condition SoCd≤
+SoCd,t+1≤SoCd can be re-expressed as a constraint onP (dev)
+d,t+1 as:
+1
+∆tη (SoCd,t−SoCd)≤P (dev)
+d,t+1≤ η
+∆t(SoCd,t−SoCd). (17)
+In summary, the range of operation of each DES unitd∈D DES is modelled by the time-varying constrained
+setRd,t:
+Rd,t ={(P,Q )∈ R2|Pd≤P≤Pd ,
+Qd≤Q≤Qd ,
+Q≤τ (1)
+d P +ρ(1)
+d ,
+Q≥τ (2)
+d P +ρ(2)
+d ,
+Q≥τ (3)
+d P +ρ(3)
+d ,
+Q≤τ (4)
+d P +ρ(4)
+d ,
+P≥ 1
+∆tη (SoCd,t−1−SoCd), (18)
+P≤ η
+∆t(SoCd,t−1−SoCd)}, ∀d∈D DES . (19)
+A.4 Network Constraints
+Constraints on the operating range of each electrical device in D (derived in Appendix A.3) get enforced
+by the environment during each timestep transition (see Appendix A.6). Unlike these constrains, however,
+network constraints will be left unchecked but will generate a large negative reward when not met, as further
+detailed in Appendix A.7. That is, the simulator will allow the network to operate past the following network
+constraints, but will penalize through negative rewards any policy that does so.
+As introduced in Section 3.6, we consider two types of such network constraints that network operators
+should ensure are satisﬁed at all times: voltage and line current constraints. The ﬁrst one is a constraint on
+bus voltage magnitudes, which must be kept within a close range of their nominal value to ensure stability of
+the grid:
+Vi≤|Vi,t|≤ Vi , ∀i∈N ,∀t∈T , (20)
+where Vi andVi are often chosen close to 1 p.u. and voltages are expressed as root mean squared (RMS)
+values.
+20
+
+
+===== PAGE 21 =====
+
+A PREPRINT - JULY 1, 2021
+The second one is an upper limit on line currents, which are determined by materials and environmental
+conditions. LetIij be the maximum physical current magnitude allowed through brancheij∈E . In practice,
+such limits are often expressed as apparent power ﬂow limitsSij at a 1 p.u. nodal voltage. The reason behind
+this choice is the fact that the apparent power ﬂow |Sij| =|ViI∗
+ij| is close to|Iij| when voltage magnitudes
+are kept close to unity by constraint (20). For consistency with existing optimization tools that model line
+current limits as apparent power ﬂow constraints, we chose to adopt the same approach in Gym-ANM. In
+addition, for a given branch eij ∈ E, the branch current at the sending end |Iij| may be different to the
+current injection at the receiving end |Iji|. This is due to the asymmetry of the common branch model of
+Figure 7. The constraints must thus be respected at each end of the branch:
+|Sij,t|≤ Sij and |Sji,t|≤ Sij , ∀eij∈E ,∀t∈T . (21)
+A.5 Network Equations
+The ﬂow of electricity within a power network is dictated by a set of network equations, or power ﬂow
+equations, which we will now derive. The following derivations assume that all AC quantities are expressed
+in RMS terms.
+The ideal transformer with complex tap ratiotij : 1 used in the common branch model introduced in Section
+A.2 can be further described by the relations:
+V = Vi
+tij
+and I =t∗
+ijIij . (22)
+Applying Kirchhoff’s current law at nodes A and B of Figure 7 yields:{I =Vysh
+ij + (V−Vj)yij
+Iji =Vjysh
+ij + (Vj−V )yij
+, (23)
+which, after substituting (22), becomes:{
+Iij = 1
+|tij|2 (yij +ysh
+ij )Vi− 1
+t∗
+ij
+yijVj
+Iji =− 1
+tij
+yijVi + (yij +ysh
+ij )Vj
+. (24)
+Expressions (24) can be equivalently presented in matrix form:
+[
+Iij
+Iji
+]
+=
+[ 1
+|tij|2 (yij +ysh
+ij ) − 1
+t∗
+ij
+yij
+− 1
+tij
+yij (yij +ysh
+ij )
+][
+Vi
+Vj
+]
+, (25)
+which is one possible formulation of the power ﬂow equations.
+However, the most commonly used formulation in practice is obtained after applying Kirchhoff’s current law
+at each busi∈N , which results in the classical matrix formulation:
+I = YV, (26)
+where I = [I0,I 1,...,I |N|−1]T is the vector of bus current injections,V = [V0,V 1,...,V |N|−1]T the vector
+of corresponding bus voltages, and Y∈ C|N|×|N| the nodal admittance matrix with elements:
+Yij =
+
+
+
+− 1
+t∗
+ij
+yij , ifi⁄=j andeij∈E ,
+− 1
+tji
+yji , ifi⁄=j andeji∈E ,∑
+eik∈E
+1
+|tik|2 (yik +ysh
+ik ) +∑
+eki∈E(yki +ysh
+ki ), ifi =j ,
+0, otherwise.
+(27)
+Finally, (26) can also be formulated in terms of nodal power injections and voltage levels, removing the need
+to compute current injections:
+P (bus)
+i + iQ(bus)
+i =ViI∗
+i =Vi(YiV)∗ =ViY∗
+i V∗ , ∀i∈N , (28)
+where Yi denotes theith row of the admittance matrix Y.
+The power ﬂow equations (28) represent a set of|N| complex-valued equations that the environment solves
+during the next_state() call of each timestep transition. To do so, every bus is modelled as a PQ bus: the
+P (bus)
+i andQ(bus)
+i variables are set by the environment (based on the agent’s action) and theVi variables are
+left as free variables for the solver. The only exception is the slack bus, where the opposite is true:Vi is ﬁxed
+to 1∠0◦ andP (bus)
+i , Q(bus)
+i are the variables. This setup results in a system of 2|N| quadratic real-valued
+equations with 2|N| free real variables.
+21
+
+
+===== PAGE 22 =====
+
+A PREPRINT - JULY 1, 2021
+A.6 Transition Function
+Based on the current statest∈S , each timestep transition starts by sampling the internal variables through the
+next_vars() block of Figure 2. Note that this block can be uniquely designed for different environments.
+The remainder of the transition function happens with the next_state() component in a deterministic
+manner, which we now describe as a series of steps analogous to the underlying implementation.
+1. Load injection point First, the reactive power injectionQ(dev)
+l,t+1 of each loadl∈D L is inferred from its
+new demandP (dev)
+l,t+1 outputted by next_vars(), according to (9):
+Q(dev)
+l,t+1 =P (dev)
+l,t+1 tanφl , (29)
+whereP (dev)
+l,t+1 is ﬁrst clipped to [Pl, 0].
+2. Distributed generator injection point The power injection point of each distributed generator g ∈
+DG−{gslack} is computed based on its allowed range of operation Rg,t+1 given by (10). The active and
+reactive injectionsaPg,t,aQg,t are then set by the agent inat:
+(P (dev)
+g,t+1,Q (dev)
+g,t+1) = arg min
+(P,Q)∈Rg,t+1
+||
+(
+aPg,t,aQg,t
+)
+− (P,Q )||. (30)
+In the case where the (aPg,t,aQg,t) injection point set by the agent falls outside ofRg,t+1, the environment
+selects the closest point inRg,t+1, according to the Euclidean distance.
+3. DES injection point Similarly, the power injection point of each DES unit d∈D DES is computed
+based on the (aPd,t,aQd,t) point chosen by the agent inat and the operating rangeRd,t+1 ofd given by (19).
+We again use the Euclidean distance as the distance metric, resulting in:
+(P (dev)
+d,t+1,Q (dev)
+d,t+1) = arg min
+(P,Q)∈Rd,t+1
+||(aPd,t,aQd,t)− (P,Q )||. (31)
+4. Power ﬂows & bus voltages Now that the power injection point of each device, with the exception of
+the slack generator, is known, the total nodal active and reactive power injection for each non-slack bus i is
+computed using:
+Pi =
+∑
+d∈Di
+Pd and Qi =
+∑
+d∈Di
+Qd . (32)
+After ﬁxing the slack bus voltage to unity, the environment then solves the network equations given by (28).
+Our implementation uses the Newton-Raphson procedure [35] to do so. From the solution, we obtain the
+voltageV (bus)
+i at each non-slack bus and the slack generator power injection point(Pgslack,t+1,Qgslack,t+1).
+5. State construction The new state vectorst+1 can now be constructed according to the structure deﬁned
+by (2). The active and reactive power injection pointsPd,t+1,Qd,t+1 have already been computed. The new
+charge levelSoCd,t+1 of each DES unit d∈D DES is obtained using expression (16). Finally, the P (max)
+g,t+1
+andaux(k)
+t+1 variables are simply copied from the output of next_vars().
+A.7 Reward Function
+The main component of the reward signal, as introduced in (4) and (5), is a sum of three energy losses and a
+penalty term associated with violating operating constraints:
+ct =−
+(
+∆Et:t+1 +λφ(st+1)
+)
+. (33)
+We chose to compute both terms in p.u. to ensure similar orders of magnitude.
+22
+
+
+===== PAGE 23 =====
+
+A PREPRINT - JULY 1, 2021
+A.7.1 Energy loss
+The transmission energy loss, ∆E(1)
+t:t+1, is computed as:
+∆E(1)
+t:t+1 = ∆t
+∑
+d∈D
+P (dev)
+d,t+1, (34)
+where ∆t is used to get the energy loss in p.u. per hour. The net amount of energy ﬂowing from the grid into
+DES units, ∆E(2)
+t:t+1, is obtained using:
+∆E(2)
+t:t+1 =−∆t
+∑
+d∈DDES
+P (dev)
+d,t+1. (35)
+Finally, the amount of energy loss as a result of renewable energy curtailment,∆E(3)
+t:t+1, is:
+∆E(3)
+t:t+1 = ∆t
+∑
+g∈DRER
+(P (max)
+g,t+1 −P (dev)
+g,t+1). (36)
+Summing (34)-(36) together yields the total energy loss:
+∆Et:t+1 = ∆t
+( ∑
+d∈DG∪DL
+P (dev)
+d,t+1 +
+∑
+g∈DRER
+(P (max)
+g,t+1 −P (dev)
+g,t+1)
+)
+. (37)
+A.7.2 Constraint-violation penalty
+Let Φ :S→ R be the penalty function that adds a large cost λΦ(st+1) to a policy that leads to a violation
+of operating constraints. To compute Φ(st+1), the environment ﬁrst computes the node voltages Vi,t+1
+using (28) and the directed branch currents Iij,t+1 and Iji,t+1 for each branch eij ∈ Eusing (25). The
+obtained values are then plugged into|Sij,t+1| =|Vi,t+1I∗
+ij,t+1| and|Sji,t+1| =|Vj,t+1I∗
+ji,t+1| to compute
+the corresponding branch’s apparent power ﬂows. The penalty termΦ(st+1) is ﬁnally obtained using:
+Φ(st+1) = ∆t
+(∑
+i∈N
+(
+max (0,|Vi,t+1|− Vi) + max (0,V i−|Vi,t+1|)
+)
++
+∑
+eij∈E
+max (0,|Sij,t+1|− Sij,|Sji,t+1|− Sij)
+)
+. (38)
+23
+
+
+===== PAGE 24 =====
+
+A PREPRINT - JULY 1, 2021
+B Model Predictive Control Scheme
+B.1 Introduction
+This appendix describes the MPC problem solved by the MPC-based policyπMPC−N introduced in Section
+3.7. At each timestep, the policy solves a multi-stage DCOPF problem with an optimization horizon of
+N timesteps. As a linear approximation of the actual ACOPF that we would like to solve, the DCOPF
+formulation relies on three assumptions, included here again for clarity:
+1. Transmission lines are lossless: rij = 0,∀eij∈E ,
+2. The difference between adjacent bus voltage angles is small: ∠Vi≈ ∠Vj,∀eij∈E ,
+3. Bus voltage magnitudes are close to unity: |Vi|≈ 1,∀i∈N .
+We start by giving a general formulation of the MPC problem in which the algorithm takes as input predictions
+of future demand and generation in Section B.2. We call this policy πMPC−N . We then consider two
+particular forecasting methods in Section B.3: one which assumes constant values over the optimization
+horizon, policyπconstant
+MPC−N , and another that generates perfect forecasts, policyπperfect
+MPC−N .
+B.2 General formulation
+B.2.1 Policy overview
+The action selection procedure followed byπMPC−N at timestept is given by Algorithm 2. In this algorithm,
+solveMPC() refers to solving5 the optimization problem (40)-(49) and extracting the vector of device active
+power injection P(dev)
+t+1 from the solution. The considered-optimal power injections from all non-slack gen-
+erators and DES units are then concatenated into an action vectorat. Since reactive power ﬂows are ignored
+by the DCOPF formulation, we chose to simply set the reactive power set-points inat to zero.
+In this general formulation, Algorithm 2 takes as inputs the network statest (directly extracted from the Gym-
+ANM simulator) and forecasts of demand and generation over the optimization horizon k = t + 1,...,t +
+N. We denote these forecasted values as ˜P (dev)
+l,k and ˜P (max)
+g,k , respectively. An additional safety margin
+hyperparameter,β∈ [0, 1], is also introduced to further constrain the power ﬂow on each transmission line
+in the OPF. This is done with the hope that it will account for any errors introduced with the linear DC
+approximation, thus ensuring that line current constraints are respected. The penalty hyperparameter λ is
+taken to be the same as in the reward function.
+Algorithm 2 MPC (multi-stage DCOPF) policyπMPC−N .
+1: Input: State st, demand forecasts { ˜P (dev)
+l,t+k}l∈DL,k=1,...,N , maximum generation forecasts
+{ ˜P (max)
+g,t+k}g∈DG−{gslack},k=1,...,N
+2: Parameter: Safety marginβ∈ [0, 1], penalty hypeparameterλ
+3:{P (dev)
+d,t+1}d∈D← solveMPC(st,{ ˜P (dev)
+l,t+k},{ ˜P (max)
+g,t+k},β,λ, grid characteristics)
+4: forg∈D G−{gslack} do
+5: aPg,t←P (dev)
+g,t+1
+6: aQg,t← 0
+7: end for
+8: ford∈D DES do
+9: aPd,t←P (dev)
+d,t+1
+10: aQd,t← 0
+11: end for
+5Our implementation uses the CVXPY Python optimization package [36, 37] to solve the optimization program.
+24
+
+
+===== PAGE 25 =====
+
+A PREPRINT - JULY 1, 2021
+B.2.2 The optimization problem
+We now describe the optimization problem (40)-(49) in more detail. The objective function is a simpliﬁed
+version of the cost function used in the reward signal, originally deﬁned as:
+∑
+g∈DG∪DL
+P (dev)
+d,t+1 +
+∑
+g∈DRER
+(
+P (max)
+g,t+1 −P (dev)
+g,t+1
+)
++λφ(st+1). (39)
+In the above formulation, load injections and maximum generations of generators are non-controllable vari-
+ables (i.e., constants), which can thus be removed from the objective function. In addition, the DCOPF
+assumptions have|Vi| = 1, which leads to|Sij| =|Pij|, from which the penalty termφ(st+1) can be greatly
+simpliﬁed. The resulting objective function to minimize is given by (40). Note that we deﬁne it as the dis-
+counted sum of costs over the optimization horizon. This is to reﬂect the agent’s objective of learning a policy
+that minimizes the expected discounted return.
+Constraints (41) and (42) express the relationships between nodal power injections, device power injections,
+and bus voltage angles. Branch power ﬂow equations are formalized by (43). Equalities (44) constrain
+the load power injections in the vector P(dev)
+k to the speciﬁed forecasted values. Similarly, expression (45)
+uses the forecasted generation upper bounds to limit generator injections in P(dev)
+k . Both DES devices and
+non-slack generators are restricted to their physical range of operation in (46), assuming reactive power
+injections of zero. In (47), power injections from DES units are limited to values that ensure SoCd,k+1∈
+[SoCd,SoCd]. Finally, (48) constrains voltage angles to be within[0, 2π] radians and (49) provides a voltage
+angle reference by ﬁxing the slack voltage angle to 0.
+minimize
+P(dev)
+k ,Vk,
+k=t+1,...,t+N
+t+N∑
+k=t+1
+γk−t−1
+( ∑
+g∈DG−DRER
+P (dev)
+g,k +λ
+∑
+eij∈E
+max (0,|Pij,k|− βSij)
+)
+(40)
+subject to P (bus)
+i,k =
+∑
+d∈Di
+P (dev)
+d,k , ∀i∈N ,∀k (41)
+P (bus)
+i,k =
+∑
+eij∈E
+Bij(∠Vi,k− ∠Vj,k) +
+∑
+eji∈E
+Bji(∠Vi,k− ∠Vj,k),∀i∈N ,∀k (42)
+Pij,k =Bij(∠Vi,k− ∠Vj,k), ∀eij∈E ,∀k (43)
+P (dev)
+l,k = ˜P (dev)
+l,k , ∀l∈D L,∀k (44)
+P (dev)
+g,k ≤ ˜P (max)
+g,k , ∀g∈D G−{gslack},∀k (45)
+Pd≤P (dev)
+d,k ≤Pd, ∀d∈D G∪DDES−{gslack},∀k (46)
+1
+∆tη (SoCd,k−SoCd)≤P (dev)
+d,k ≤ η
+∆t(SoCd,k−SoCd),∀d∈D DES,∀k (47)
+0≤ ∠Vi,k≤ 2π, ∀i∈N ,∀k (48)
+∠V0,k = 0, ∀k (49)
+B.2.3 Further considerations
+The performance achieved byπMPC−N provides a lower bound on the best performance achievable in a given
+environment. This bound is not tight, however, since the achieved performance depends on (a) the quality of
+the DC linear approximation, (b) the accuracy of the forecasted values, and (c) the length of the optimization
+horizonN. Note that, in general, the performance of an MPC-based policy increases asN→∞ . Because of
+(a) and (b), however, this may not be the case withπMPC−N , since, e.g., erroneous long-term forecasts may
+harm policies with largerN’s. As a result,N may have to be tuned, depending on the environment.
+B.3 Special cases: constant and perfect forecast
+We now consider two special cases of the MPC-based policy πMPC−N . Both policies were used in the
+ANM6-Easy environment in Section 5.
+25
+
+
+===== PAGE 26 =====
+
+A PREPRINT - JULY 1, 2021
+B.3.1 Constant forecast
+The ﬁrst variant that we consider is πconstant
+MPC−N . It assumes that load injections P (dev)
+l,t and maximum genera-
+tionsP (max)
+g,t remain constant during the optimization horizon. As such, it is one of the simplest variants of
+πMPC−N that one could use. Formally, we can describeπconstant
+MPC−N by its constant forecasts:
+{ ˜P (dev)
+l,k =P (dev)
+l,t , ∀l∈D L, k=t + 1,...,t +N,
+˜P (max)
+g,k =P (max)
+g,t , ∀g∈D G−{gslack}, k=t + 1,...,t +N. (50)
+The main advantage ofπconstant
+MPC−N is that it can be used out-of-the-box in any Gym-ANM environment. More
+information on how to do this can be found on the project repository.
+B.3.2 Perfect forecast
+The second variant that we consider is πperfect
+MPC−N . This variant is speciﬁcally tailored for the ANM6-Easy
+environment introduced in Section 4.2. This is because it assumes perfect forecasts of load injections and
+maximum generations. In other words, it relies on the fact that ANM6-Easy is a deterministic environment in
+which future demand and generation can be perfectly predicted. Formally,πperfect
+MPC−N uses perfect forecasts:
+{ ˜P (dev)
+l,k =P (dev)
+l,k , ∀l∈D L, k=t + 1,...,t +N,
+˜P (max)
+g,k =P (max)
+g,k , ∀g∈D G−{gslack}, k=t + 1,...,t +N. (51)
+Unlikeπconstant
+MPC−N , policy πperfect
+MPC−N can only be used in deterministic environments of the like of ANM6-
+Easy. Nevertheless, it offers a large advantage in that it yields a much better performance in such envi-
+ronments. This provides the user with a tighter lower bound on the best achievable performance in the
+environment.
+26
+
+
+===== PAGE 27 =====
+
+A PREPRINT - JULY 1, 2021
+C New Gym-ANM Environments
+This appendix gives an overview of the procedure to follow to design new Gym-ANM environments 6. New
+Gym-ANM environments can be implemented as Python subclasses that inherit the provided ANMEnv super-
+class, following the template presented in Listing 2.
+from gym_anm . envs import ANMEnv
+class MyANMEnv ( ANMEnv ):
+def __init__ ( self ):
+network = { ’ baseMVA ’ :... , ’ bus ’ :... , ’ device ’ :... ,
+’ branch ’ :...}
+obs = [( ’ bus_p ’ , [0 ,1] , ’ MW ’) , ( ’ dev_q ’ , [2] , ’ MW ’ )]
+# or a callable
+K = 1
+delta = 0.25
+gamma = 0.999
+lamb = 1000 # ’ lambda ’ is a reserved keyword in Python
+r_clip = 100
+seed = None
+super (). __init__ ( network , obs , K , delta , gamma , lamb ,
+r_clip , seed )
+def i n i t _ s t a t e ( self ):
+...
+def ne xt _v ar s ( self , s_t ):
+...
+def o b s e r v a t i o n _ b o u n d s ( self ): # optional
+...
+Listing 2: Implementation template for new Gym-ANM environments.
+__init__() This method, known as a constructor in object-oriented languages, is called when a new
+instance of the new environment MyANMEnv is created. In order to initialize the environment, the following
+arguments need to be passed to the superclass, through the call super().__init__():
+• network: a Python dictionary that describes the structure and characteristics of the distribution
+networkG and the set of electrical devicesD. Its structure should follow the one given in Appendix
+D.
+• obs: a list of tuples corresponding to the variables to include in observation vectors. In Listing 2,ot
+is constructed as (P (bus)
+0,t ,P (bus)
+1,t ,Q (dev)
+2,t ), all in MW units. The full list of supported combinations
+is given in Table 3. Alternatively, the obs object can be deﬁned as a customized callable object
+(function) that returns observation vectors when called (i.e.,ot = obs(st)), or as a string ’state’.
+In the later case, the environment becomes fully observable and observationsot =st are emitted.
+• K: the number of auxiliary variablesK in the state vector given by (2).
+• delta, gamma, lamb, r_clip: the hyperparameters ∆t,γ,λ, andrclip, respectively, used to com-
+pute the rewards and returns, as introduced in Section 3.1.
+• seed: an integer to be used as random seed.
+init_state() This method will be called once at the start of each new trajectory and it should return an
+initial state vector s0 that matches the structure of (2). In the case where s0 falls outside ofS because, for
+instance, the (P,Q ) injection point of a device falls outside of its operating range, the environment will map
+s0 to the closest element of S according to the Euclidean distance. In short, init_state() implements
+p0(·).
+next_vars() As introduced in Section 3.1,next_vars() is a method that receives the current state vector
+st and should return the outcomes of the internal variables for timestept + 1. It must be implemented by the
+designer of the task, with the only constraint being that it must return a list of|DL| +|DRER| +K values.
+6Further guidelines and tutorials can be found on the project repository.
+27
+
+
+===== PAGE 28 =====
+
+A PREPRINT - JULY 1, 2021
+Keyword Description Units
+bus p (dev p) Bus (Device) active power injection P (bus)
+i (P (dev)
+d ) MW, pu
+bus q (dev q) Bus (Device) reactive power injection Q(bus)
+i (Q(dev)
+d ) MV Ar, pu
+bus v magn Bus voltage magnitude |Vi| pu, kV
+bus v ang Bus voltage angle ∠Vi degree, rad
+bus i magn Bus current injection magnitude |Ii| pu, kA
+bus i ang Bus current injection angle ∠Ii degree, rad
+branch p Branch active power ﬂow Pij MW, pu
+branch q Branch reactive power ﬂow Qij MV Ar, pu
+branch s Branch apparent power ﬂow |Sij| MV A, pu
+branch i magn Branch current magnitude |Iij| pu
+branch i ang Branch current angle ∠Iij degree, rad
+des soc SOC of DES SoCd MWh, pu
+gen p max Generator dynamic upper bound P (max)
+g MW, pu
+aux Vector of K auxiliary variablesaux(K) –
+Table 3: Available combinations for the observation parameter. Each type of
+observation should be provided as a tuple with the corresponding bus/device in-
+dices or with the ’all’ keyword. Units can also be speciﬁed. For instance:
+[(’bus_p’, ’all’, ’pu’), (’dev_q’, [1,2], ’MVAr’), (’branch_s’, [(1,2)])] would
+lead to observation vectorsot = [P (bus)
+1 ,...,P (bus)
+N ,Q (dev)
+1 ,Q (dev)
+2 ,|S12|].
+observation_bounds() This method is optional and only useful if the observation space is speciﬁed as
+a callable object. In the latter case, observation_space() should return the (potentially loose) bounds of
+the observation spaceO, so that agents can easily normalize emitted observation vectors.
+Additional render() and close() methods can also be implemented to support rendering of the interactions
+between the agent and the new environment. render() should update the visualization every time it gets
+called, and close() should end the rendering process. For more information, we refer to the ofﬁcial OpenAI
+Gym documentation [23].7
+7https://gym.openai.com/docs/
+28
+
+
+===== PAGE 29 =====
+
+A PREPRINT - JULY 1, 2021
+D Network Input Dictionary
+This appendix describes the structure of the Python dictionary required to build new Gym-ANM environ-
+ments. The dictionary should contain four keys: ’baseMVA’, ’bus’, ’device’, and ’branch’. The value
+given to the key ’baseMVA’ should be a single integer, representing the base power of the system (in MV A)
+used to normalize values to per-unit. Each of the other three keys should be associated with a numpy 2D
+array, in which each row represents a single bus, device, or branch of the distribution network. The structures
+of the ’bus’, ’device’, and ’branch’ arrays are described in Tables 4, 5, and 6, respectively.
+Column Description
+0 Bus unique ID i (0-indexing).
+1 Bus type (0 = slack, 1 = PQ).
+2 RMS base voltage of the zone (kV).
+3 Maximum RMS voltage magnitude Vi (p.u.).
+4 Minimum RMS voltage magnitude Vi (p.u.).
+Table 4: Bus data: description of each row in the ’bus’ numpy array.
+Column Description
+0 Device unique ID d (0-indexing).
+1 Bus unique ID i to whichd is connected.
+2 Type of device (-1 = load; 0 = slack; 1 = classical generator; 2 = distributed renewable
+energy generator; 3 = DES unit).
+3 Constant ratio of reactive power over active power (Q/P )d (loads only).
+4 Maximum active power output Pd (MW).
+5 Minimum active power output Pd (MW).
+6 Maximum reactive power output Qd (MV Ar).
+7 Minimum reactive power output Qd (MV Ar).
+8 Positive active power output of PQ capability curve P +
+d (MW).
+9 Negative active power output of PQ capability curve P−
+d (MW).
+10 Positive reactive power output of PQ capability curve Q+
+d (MV Ar).
+11 Negative reactive power output of PQ capability curve Q−
+d (MV Ar).
+12 Maximum state of charge of storage unit SoCd (MWh).
+13 Minimum state of charge of storage unit SoCd (MWh).
+14 Charging and discharging efﬁciency coefﬁcient of storage unit ηd.
+Table 5: Device data: description of each row in the ’device’ numpy array.
+Column Description
+0 Sending-end bus unique ID i.
+1 Receiving-end bus unique ID j.
+2 Branch series resistance rij (p.u.).
+3 Branch series reactance xij (p.u.).
+4 Branch total charging susceptance bij (p.u.).
+5 Branch rating Sij (MV A).
+6 Transformer off-nominal turns ratio τij.
+7 Transformer phase shift angle θij (degrees) (> 0 = delay).
+Table 6: Branch data: description of each row in the ’branch’ numpy array.
+29
+
+
+===== PAGE 30 =====
+
+A PREPRINT - JULY 1, 2021
+E ANM6-Easy Environment
+This appendix describes in more detail the ANM6-Easy Gym-ANM environment introduced in Section 4.2.
+E.1 Network Characteristics
+Tables 7, 8, and 9 summarize the characteristics of buses, electrical devices, and branches, respectively,
+following the network input dictionary structure given in Appendix D. Based on the values given in Table 8,
+the range of operation (see Appendices A.3.2 and A.3.3) of the distributed generators and the DES unit of
+ANM6-Easy are also plotted in Figure 10.
+i Type Base voltage Vi Vi
+0 0 132 1.04 1.04
+1 1 33 1.1 0.9
+2 1 33 1.1 0.9
+3 1 33 1.1 0.9
+4 1 33 1.1 0.9
+5 1 33 1.1 0.9
+Table 7: Description of each busi∈N of ANM6-Easy.
+d i Type (Q/P )d Pd Pd Qd Qd P +
+d P−
+d Q+
+d Q−
+d SoCd SoCd ηd
+0 0 0 - - - - - - - - - - - -
+1 3 -1 0.2 0 -10 - - - - - - - - -
+2 3 2 - 30 0 30 -30 20 - 15 -15 - - -
+3 4 -1 0.2 0 -30 - - - - - - - - -
+4 4 2 - 50 0 50 -50 35 - 20 -20 - - -
+5 5 -1 0.2 0 -30 - - - - - - - - -
+6 5 3 - 50 -50 50 -50 30 -30 25 -25 100 0 0.9
+Table 8: Description of each electrical deviced∈D of ANM6-Easy.
+i j rij xij bij Sij τij θij
+0 1 0.0036 0.1834 0 32 1 0
+1 2 0.03 0.022 0 25 1 0
+1 3 0.0307 0.0621 0 18 1 0
+2 4 0.0303 0.0611 0 18 1 0
+2 5 0.0159 0.0502 0 18 1 0
+Table 9: Description of each brancheij∈E of ANM6-Easy.
+The ﬁxed time series used by the next_vars() component of ANM6-Easy, in order to model the evolution
+of the loads and of the maximum generation from renewable energy resources, are provided in Table 10.
+E.2 Environment Initialization
+The initialization procedure of ANM6-Easy, according to which initial states s0∼ p0(·) are drawn, is illus-
+trated in Algorithm 3. Time series P1−5 refer to Table 10. An initial time of day t0 is sampled and used to
+initialize theaux(0) variable (lines 2-3) and to index the ﬁxed time series of active power demand and maxi-
+mum generation (lines 5, 8). In line 5, the (P,Q ) power injection from each load is obtained based on their
+30
+
+
+===== PAGE 31 =====
+
+A PREPRINT - JULY 1, 2021
+−40 −20 0 20 40
+Real power injection P
+−40
+−20
+0
+20
+40
+Reactive power injection Q
+(a)
+−40 −20 0 20 40
+Real power injection P
+−40
+−20
+0
+20
+40
+Reactive power injection Q (b)
+−40 −20 0 20 40
+Real power injection P
+−40
+−20
+0
+20
+40
+Reactive power injection Q
+(c)
+Figure 10: The range of valid (P,Q ) injection points for (a) the solar farm, (b) the wind farm, and (c) the
+DES unit of ANM6-Easy, as formalized in Appendices A.3.2 and A.3.3.
+respective constant power factor. We assume that each distributed generator operates at its maximum active
+power (i.e., no generator is curtailed) and that its reactive power injection is sampled uniformly. The initial
+power injection point of each generator is then mapped onto the generator’s allowed region of operationRg,0
+(line 9). The initial state of charge of the DES unit is also uniformly sampled and its power injection point
+is set to zero (lines 12-13). Finally, the slack power injection is obtained after solving the set of network
+equations (line 15).
+31
+
+
+===== PAGE 32 =====
+
+A PREPRINT - JULY 1, 2021
+Situation aux(0)
+t P1 P2 P3 P4 P5
+1 0-24 92-95 -1 0 -4 40 0
+1-2 25 91 -1.5 0.5 -4.75 36.375 -3.125
+1-2 26 90 -2 1 -5.5 32.75 -6.25
+1-2 27 89 -2.5 1.5 -6.25 29.125 -9.375
+1-2 28 88 -3 2 -7 25.5 -12.5
+1-2 29 87 -3.5 2.5 -7.75 21.875 -15.625
+1-2 30 86 -4 3 -8.5 18.25 -18.75
+1-2 31 85 -4.5 3.5 -9.25 14.625 -21.875
+2 32-44 72-84 -5 4 -10 11 -25
+2-3 45 71 -4.625 7.25 -11.25 14.625 -21.875
+2-3 46 70 -4.25 10.50 -12.5 18.25 -18.75
+2-3 47 69 -3.875 13.75 -13.75 21.875 -15.625
+2-3 48 68 -3.5 17 -15 25.5 -12.5
+2-3 49 67 -3.125 20.25 -16.25 29.125 -9.375
+2-3 50 66 -2.75 23.5 -17.5 32.75 -6.25
+2-3 51 65 -2.375 26.75 -18.75 36.375 -3.125
+3 52-64 -2 30 -20 40 0
+Table 10: The ﬁxed time series P1−5 used to model the temporal evolution of the loadsP (dev)
+l,t ,l∈{ 1, 3, 5},
+and the maximum generationsP (max)
+g,t ,g∈{ 2, 4}, in the ANM6-Easy environment, creating the three chal-
+lenging situations described in Section 4. The auxiliary variable aux(0)
+t = (t0 +t) mod 24
+∆t is used as an
+index to those time series.
+Algorithm 3 Initialization of ANM6-Easy,p0(·).
+1: Output:s0∈S
+2: t0∼U{0, 24
+∆t− 1}
+3: aux(0)
+0 ←t0
+4: forl∈D L do
+5: (P (dev)
+l,0 ,Q (dev)
+l,0 )← (Pl[t0], Pl[t0] tanφl)
+6: end for
+7: forg∈D G−{gslack} do
+8: P (max)
+g,0 ← Pg[t0]
+9: (P (dev)
+g,0 ,Q (dev)
+g,0 )← arg min(P,Q)∈Rg,0||(P (max)
+g,0 ,q )− (P,Q )||, withq∼U[Qg,Qg]
+10: end for
+11: ford∈D DES do
+12: SoCd,0∼U[SoCd,SoCd]
+13: (P (dev)
+d,0 ,Q (dev)
+d,0 )← (0, 0)
+14: end for
+15: (P (dev)
+gslack,0,Q (dev)
+gslack,0)← solution of (28) withV0 = 1∠0
+32
+
+
+===== PAGE 33 =====
+
+A PREPRINT - JULY 1, 2021
+F Experimental hyperparameters
+The hyperparameters used for the experiments presented in Section 5 are summarized in Table 11 for the
+PPO and in Table 12 for the SAC algorithms. Both implementations were taken from the Stable Baselines 3
+library [32]. The horizonT is the maximum number of steps per episode used during training.
+Hyperparameter Value
+Horizon (T ) 5000
+Adam learning rate 3× 10−4
+Steps per update 2048
+Num. epochs 10
+Minibatch size 64
+GAE parameter (λ) 0.95
+Clipping parameter (ϵ) 0.2
+VF coeff. c1 0.5
+Entropy coeff. c2 0.0
+Normalized observations True
+Table 11: PPO hyperparameters.
+Hyperparameter Value
+Horizon (T ) 5000
+Adam learning rate 3× 10−4
+Replay buffer size 106
+Steps per update 1
+Minibatch size 256
+Target smoothing coefﬁcient (τ) 0.005
+Target update interval 1
+Gradient steps 1
+Entropy regularization coefﬁcient ’auto’
+Normalized observations True
+Table 12: SAC hyperparameters.
+33
