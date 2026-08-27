@@ -1,0 +1,10 @@
+{
+  "name": "power-grid-literature-only",
+  "domain": "power_grid",
+  "research_mode": "power_grid_literature_only",
+  "scope": ["definition", "modeling", "objectives", "constraints", "methods", "LLM/agentic methods"],
+  "human_approval_before": ["adversarial_review", "evidence_review", "draft", "final_review"],
+  "forbidden": ["code_execution", "simulation", "gpu_experiments", "algorithm_implementation"],
+  "download_policy": "open-access sources only; preserve DOI, URL, license and checksum",
+  "extraction_policy": "extract each full text once and pass bounded chunks/metadata to later agents"
+}
