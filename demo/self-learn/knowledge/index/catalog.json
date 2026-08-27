@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "description": "Hand-maintained entry point for the distilled power-grid embodied-intelligence corpus.",
+  "entries": [
+    {"path": "research-map.md", "kind": "map", "tags": ["embodiment", "safety", "agent"]},
+    {"path": "corpus-index.md", "kind": "corpus", "tags": ["retrieval", "sources"]},
+    {"path": "learning-path.md", "kind": "curriculum", "tags": ["beginner", "tutorial"]},
+    {"path": "innovation-bank.md", "kind": "research", "tags": ["innovation", "ablation", "safety"]},
+    {"path": "experiment-blueprint.md", "kind": "protocol", "tags": ["benchmark", "reproducibility"]},
+    {"path": "agent-protocol.md", "kind": "agent", "tags": ["prompt", "audit"]},
+    {"path": "../../power-grid-literature-run/report.md", "kind": "literature-report", "tags": ["economic-dispatch", "microgrid", "methods"]},
+    {"path": "../cards/powergym-2022.md", "kind": "card", "tags": ["distribution", "volt-var", "benchmark"]},
+    {"path": "../cards/gym-anm-2021.md", "kind": "card", "tags": ["distribution", "active-network-management"]},
+    {"path": "../cards/grid2op-2020.md", "kind": "card", "tags": ["transmission", "topology", "benchmark"]},
+    {"path": "../cards/powergridworld-2022.md", "kind": "card", "tags": ["multi-agent", "coordination"]},
+    {"path": "../cards/commonpower-2024.md", "kind": "card", "tags": ["safe-rl", "model-based-safety"]},
+    {"path": "../cards/safe-rl-reviews-2024.md", "kind": "card", "tags": ["safe-rl", "evaluation"]},
+    {"path": "../cards/foundation-models-power-systems-2023.md", "kind": "card", "tags": ["llm", "tools"]},
+    {"path": "../cards/x-gridagent-2025.md", "kind": "card", "tags": ["llm", "agent", "power-grid"]}
+  ]
+}
